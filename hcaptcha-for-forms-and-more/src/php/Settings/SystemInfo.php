@@ -7,6 +7,7 @@
 
 namespace HCaptcha\Settings;
 
+use HCaptcha\Migrations\Migrations;
 use KAGG\Settings\Abstracts\SettingsBase;
 
 /**
@@ -17,19 +18,24 @@ use KAGG\Settings\Abstracts\SettingsBase;
 class SystemInfo extends PluginSettingsBase {
 
 	/**
+	 * Dialog scripts and style handle.
+	 */
+	public const DIALOG_HANDLE = 'kagg-dialog';
+
+	/**
 	 * Admin script handle.
 	 */
-	const HANDLE = 'hcaptcha-system-info';
+	public const HANDLE = 'hcaptcha-system-info';
 
 	/**
 	 * Script localization object.
 	 */
-	const OBJECT = 'HCaptchaSystemInfoObject';
+	public const OBJECT = 'HCaptchaSystemInfoObject';
 
 	/**
 	 * Data key length.
 	 */
-	const DATA_KEY_LENGTH = 36;
+	private const DATA_KEY_LENGTH = 36;
 
 	/**
 	 * Get page title.
@@ -51,12 +57,29 @@ class SystemInfo extends PluginSettingsBase {
 
 	/**
 	 * Enqueue class scripts.
+	 *
+	 * @return void
 	 */
-	public function admin_enqueue_scripts() {
+	public function admin_enqueue_scripts(): void {
+		wp_enqueue_script(
+			self::DIALOG_HANDLE,
+			constant( 'HCAPTCHA_URL' ) . "/assets/js/kagg-dialog$this->min_suffix.js",
+			[],
+			constant( 'HCAPTCHA_VERSION' ),
+			true
+		);
+
+		wp_enqueue_style(
+			self::DIALOG_HANDLE,
+			constant( 'HCAPTCHA_URL' ) . "/assets/css/kagg-dialog$this->min_suffix.css",
+			[],
+			constant( 'HCAPTCHA_VERSION' )
+		);
+
 		wp_enqueue_script(
 			self::HANDLE,
-			constant( 'HCAPTCHA_URL' ) . "/assets/js/system-info$this->min_prefix.js",
-			[],
+			constant( 'HCAPTCHA_URL' ) . "/assets/js/system-info$this->min_suffix.js",
+			[ self::DIALOG_HANDLE ],
 			constant( 'HCAPTCHA_VERSION' ),
 			true
 		);
@@ -65,14 +88,16 @@ class SystemInfo extends PluginSettingsBase {
 			self::HANDLE,
 			self::OBJECT,
 			[
-				'copiedMsg' => __( 'System info copied to clipboard.', 'hcaptcha-for-forms-and-more' ),
+				'successMsg' => __( 'System info copied to the clipboard.', 'hcaptcha-for-forms-and-more' ),
+				'errorMsg'   => __( 'Cannot copy info to the clipboard.', 'hcaptcha-for-forms-and-more' ),
+				'OKBtnText'  => __( 'OK', 'hcaptcha-for-forms-and-more' ),
 			]
 		);
 
 		wp_enqueue_style(
 			self::HANDLE,
-			constant( 'HCAPTCHA_URL' ) . "/assets/css/system-info$this->min_prefix.css",
-			[ static::PREFIX . '-' . SettingsBase::HANDLE ],
+			constant( 'HCAPTCHA_URL' ) . "/assets/css/system-info$this->min_suffix.css",
+			[ static::PREFIX . '-' . SettingsBase::HANDLE, self::DIALOG_HANDLE ],
 			constant( 'HCAPTCHA_VERSION' )
 		);
 	}
@@ -82,11 +107,10 @@ class SystemInfo extends PluginSettingsBase {
 	 *
 	 * @param array $arguments Section arguments.
 	 */
-	public function section_callback( array $arguments ) {
+	public function section_callback( array $arguments ): void {
+		$this->print_header();
+
 		?>
-		<h2>
-			<?php echo esc_html__( 'System Information', 'hcaptcha-for-forms-and-more' ); ?>
-		</h2>
 		<div id="hcaptcha-system-info-wrap">
 			<span class="helper">
 				<span class="helper-content"><?php esc_html_e( 'Copy system info to clipboard', 'hcaptcha-for-forms-and-more' ); ?></span>
@@ -108,10 +132,11 @@ class SystemInfo extends PluginSettingsBase {
 	 *
 	 * @return string
 	 */
-	public function get_system_info(): string {
+	protected function get_system_info(): string {
 		$data = $this->header( '### Begin System Info ###' );
 
 		$data .= $this->hcaptcha_info();
+		$data .= $this->integration_info();
 		$data .= $this->site_info();
 		$data .= $this->wp_info();
 		$data .= $this->uploads_info();
@@ -132,15 +157,33 @@ class SystemInfo extends PluginSettingsBase {
 		$settings = hcaptcha()->settings();
 		$data     = $this->header( '-- hCaptcha Info --' );
 
-		$data .= $this->data( 'Version', HCAPTCHA_VERSION );
+		$data .= $this->data( 'Version', constant( 'HCAPTCHA_VERSION' ) );
+
+		// Keys section.
 		$data .= $this->data( 'Site key', $this->is_empty( $settings->get_site_key() ) );
 		$data .= $this->data( 'Secret key', $this->is_empty( $settings->get_secret_key() ) );
-		$data .= $this->data( 'Theme', $settings->get( 'theme' ) );
+
+		// Appearance section.
+		$data .= $this->data( 'Theme', $settings->get_theme() );
 		$data .= $this->data( 'Size', $settings->get( 'size' ) );
 		$data .= $this->data( 'Language', $settings->get( 'language' ) ?: 'Auto-detect' );
 		$data .= $this->data( 'Mode', $settings->get_mode() );
+
+		// Custom section.
 		$data .= $this->data( 'Custom Themes', $this->is_on( 'custom_themes' ) );
 		$data .= $this->data( 'Config Params', $this->is_empty( $settings->get( 'config_params' ) ) );
+
+		// Enterprise section.
+		$data .= $this->data( 'API Host', $settings->get( 'api_host' ) );
+		$data .= $this->data( 'Asset Host', $settings->get( 'asset_host' ) );
+		$data .= $this->data( 'Endpoint', $settings->get( 'endpoint' ) );
+		$data .= $this->data( 'Host', $settings->get( 'host' ) );
+		$data .= $this->data( 'Image Host', $settings->get( 'image_host' ) );
+		$data .= $this->data( 'Report API', $settings->get( 'report_api' ) );
+		$data .= $this->data( 'Sentry', $settings->get( 'sentry' ) );
+		$data .= $this->data( 'Backend', $settings->get( 'backend' ) );
+
+		// Other section.
 		$data .= $this->data( 'Turn Off When Logged In', $this->is_on( 'off_when_logged_in' ) );
 		$data .= $this->data( 'Disable reCAPTCHA Compatibility', $this->is_on( 'recaptcha_compat_off' ) );
 		$data .= $this->data( 'Whitelisted IPs', $this->is_empty( $settings->get( 'whitelisted_ips' ) ) );
@@ -148,11 +191,34 @@ class SystemInfo extends PluginSettingsBase {
 		$data .= $this->data( 'Failed login attempts interval, min', $settings->get( 'login_interval' ) );
 		$data .= $this->data( 'Delay showing hCaptcha, ms', $settings->get( 'delay' ) );
 
-		list( $integration_fields, $integration_settings ) = $this->get_integrations();
+		$migrations = get_option( Migrations::MIGRATED_VERSIONS_OPTION_NAME, [] );
+
+		$data .= $this->data( 'Migrations' );
+
+		$format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+
+		foreach ( $migrations as $version => $timestamp ) {
+			$value = Migrations::STARTED === $timestamp ? 'Started' : 0;
+			$value = Migrations::FAILED === $timestamp ? 'Failed' : $value;
+			$value = $value ?: gmdate( $format, $timestamp );
+
+			$data .= $this->data( '  ' . $version, $value );
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Get integration info.
+	 *
+	 * @return string
+	 */
+	public function integration_info(): string {
+		[ $integration_fields, $integration_settings ] = $this->get_integrations();
 
 		$disabled = false;
 
-		$data .= $this->header( '--- Active plugins and themes ---' );
+		$data = $this->header( '--- Active plugins and themes ---' );
 
 		foreach ( $integration_fields as $field_key => $field ) {
 			if ( $field['disabled'] !== $disabled ) {
@@ -161,7 +227,7 @@ class SystemInfo extends PluginSettingsBase {
 				$data .= $this->header( '--- Inactive plugins and themes ---' );
 			}
 
-			$data .= $this->data( $field['label'], '' );
+			$data .= $this->data( $field['label'] );
 
 			foreach ( $field['options'] as $option_key => $option ) {
 				$setting = isset( $integration_settings[ $field_key ] ) ? (array) $integration_settings[ $field_key ] : [];
@@ -179,7 +245,7 @@ class SystemInfo extends PluginSettingsBase {
 	 *
 	 * @return array
 	 */
-	private function get_integrations(): array {
+	public function get_integrations(): array {
 		$tabs = hcaptcha()->settings()->get_tabs();
 
 		$tabs = array_filter(
@@ -248,12 +314,19 @@ class SystemInfo extends PluginSettingsBase {
 			$data .= $this->data( 'Page For Posts', $blog_page );
 		}
 
-		$data .= $this->data( 'ABSPATH', ABSPATH );
+		$data .= $this->data( 'ABSPATH', constant( 'ABSPATH' ) );
 		$data .= $this->data( 'Table Prefix', 'Length: ' . strlen( $wpdb->prefix ) . '   Status: ' . ( strlen( $wpdb->prefix ) > 16 ? 'ERROR: Too long' : 'Acceptable' ) );
-		$data .= $this->data( 'WP_DEBUG', defined( 'WP_DEBUG' ) ? WP_DEBUG ? 'Enabled' : 'Disabled' : 'Not set' );
-		$data .= $this->data( 'Memory Limit', WP_MEMORY_LIMIT );
+		$data .= $this->data( 'WP_DEBUG', defined( 'WP_DEBUG' ) ? constant( 'WP_DEBUG' ) ? 'Enabled' : 'Disabled' : 'Not set' );
+		$data .= $this->data( 'Memory Limit', constant( 'WP_MEMORY_LIMIT' ) );
 		$data .= $this->data( 'Registered Post Stati', implode( ', ', get_post_stati() ) );
-		$data .= $this->data( 'Revisions', WP_POST_REVISIONS ? WP_POST_REVISIONS > 1 ? 'Limited to ' . WP_POST_REVISIONS : 'Enabled' : 'Disabled' );
+		$data .= $this->data(
+			'Revisions',
+			constant( 'WP_POST_REVISIONS' ) ?
+				constant( 'WP_POST_REVISIONS' ) > 1 ?
+					'Limited to ' . constant( 'WP_POST_REVISIONS' ) :
+					'Enabled' :
+				'Disabled'
+		);
 
 		return $data;
 	}
@@ -267,9 +340,9 @@ class SystemInfo extends PluginSettingsBase {
 	private function uploads_info(): string {
 		$data = $this->header( '-- WordPress Uploads/Constants --' );
 
-		$data .= $this->data( 'WP_CONTENT_DIR', defined( 'WP_CONTENT_DIR' ) ? WP_CONTENT_DIR ?: 'Disabled' : 'Not set' );
-		$data .= $this->data( 'WP_CONTENT_URL', defined( 'WP_CONTENT_URL' ) ? WP_CONTENT_URL ?: 'Disabled' : 'Not set' );
-		$data .= $this->data( 'UPLOADS', defined( 'UPLOADS' ) ? UPLOADS ?: 'Disabled' : 'Not set' );
+		$data .= $this->data( 'WP_CONTENT_DIR', defined( 'WP_CONTENT_DIR' ) ? constant( 'WP_CONTENT_DIR' ) ?: 'Disabled' : 'Not set' );
+		$data .= $this->data( 'WP_CONTENT_URL', defined( 'WP_CONTENT_URL' ) ? constant( 'WP_CONTENT_URL' ) ?: 'Disabled' : 'Not set' );
+		$data .= $this->data( 'UPLOADS', defined( 'UPLOADS' ) ? constant( 'UPLOADS' ) ?: 'Disabled' : 'Not set' );
 
 		$uploads_dir = wp_upload_dir();
 
@@ -368,7 +441,7 @@ class SystemInfo extends PluginSettingsBase {
 	 *
 	 * @return string
 	 */
-	private function multisite_plugins(): string {
+	protected function multisite_plugins(): string {
 		$data = '';
 
 		if ( ! is_multisite() ) {
@@ -418,7 +491,7 @@ class SystemInfo extends PluginSettingsBase {
 		// Server configuration (really just versions).
 		$data = $this->header( '-- Webserver Configuration --' );
 
-		$data .= $this->data( 'PHP Version', PHP_VERSION );
+		$data .= $this->data( 'PHP Version', constant( 'PHP_VERSION' ) );
 		$data .= $this->data( 'MySQL Version', $wpdb->db_version() );
 		$data .= $this->data( 'Webserver Info', isset( $_SERVER['SERVER_SOFTWARE'] ) ? sanitize_text_field( wp_unslash( $_SERVER['SERVER_SOFTWARE'] ) ) : '' );
 
@@ -475,7 +548,7 @@ class SystemInfo extends PluginSettingsBase {
 	 *
 	 * @return string
 	 */
-	private function data( string $key, string $value, int $max_key_length = 0 ): string {
+	private function data( string $key, string $value = '', int $max_key_length = 0 ): string {
 		$length = $max_key_length ? max( $max_key_length, self::DATA_KEY_LENGTH ) : self::DATA_KEY_LENGTH;
 
 		$length += 2;

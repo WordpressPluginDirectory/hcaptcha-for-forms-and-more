@@ -15,8 +15,8 @@
 	position: absolute;
 	content: '';
 	top: 0;
-	left: 0;
-	right: 0;
+	inset-inline-start: 0;
+	inset-inline-end: 0;
 	bottom: 0;
 	background-color: #f0f0f0;
 	opacity: 0;
@@ -35,8 +35,8 @@
 	position: absolute;
 	content: '';
 	top: 0;
-	left: 0;
-	right: 0;
+	inset-inline-start: 0;
+	inset-inline-end: 0;
 	bottom: 0;
 	opacity: 0;
 	transition: all 1.5s;
@@ -91,15 +91,19 @@
 	top: 0;
 	width: 4px;
 	bottom: 0;
-	left: -14px;
+	inset-inline-start: -14px;
+}
+
+.hcaptcha-integrations > table ~ table tr th .hcaptcha-integrations-logo:hover::before {
+	background-color: #00a32a;
 }
 
 .hcaptcha-integrations > table tr th .hcaptcha-integrations-logo:hover::before {
 	background-color: #d63638;
 }
 
-.hcaptcha-integrations > table ~ table tr th .hcaptcha-integrations-logo:hover::before {
-	background-color: #00a32a;
+.hcaptcha-integrations > table ~ table tr th .hcaptcha-integrations-logo[data-installed="0"]:hover::before {
+	background-color: #dba617;
 }
 
 .hcaptcha-integrations table tr th img {
@@ -124,6 +128,36 @@
 	margin: 20px 0;
 }
 
+.hcaptcha-integrations table.form-table + p.submit {
+	padding: 10px 0 0 0;
+}
+
+#hcaptcha-integrations-search-wrap {
+	position: relative;
+}
+
+#hcaptcha-integrations-search-wrap:before {
+	content: '';
+	background: url( '../images/magnifying-glass.svg' );
+	background-size: contain;
+	width: 16px;
+	height: 16px;
+	font-size: 16px;
+	text-align: center;
+	position: absolute;
+	inset-inline-start: 10px;
+	top: 50%;
+	transform: translateY(-50%);
+}
+
+#hcaptcha-integrations-search {
+	width: 230px;
+	padding-block-start: 1px;
+	padding-inline-end: 8px;
+	padding-block-end: 1px;
+	padding-inline-start: 32px;
+}
+
 @media (max-width: 1279px) {
 	.hcaptcha-integrations table tbody {
 		grid-template-columns: repeat(3, minmax(100px, 1fr));
@@ -134,4 +168,45 @@
 	.hcaptcha-integrations table tbody {
 		grid-template-columns: repeat(2, minmax(100px, 1fr));
 	}
+}
+
+@media (max-width: 782px) {
+	#hcaptcha-integrations-search {
+		font-size: 14px;
+		min-height: unset;
+	}
+}
+
+/* KAGG Dialog hCaptcha styles */
+body div.kagg-dialog {
+	--color-activate: #00a32a;
+	--color-deactivate: #d63638;
+	--color-install: #dba617;
+}
+
+body div.kagg-dialog.activate .kagg-dialog-container .kagg-dialog-box {
+	color: var(--color-activate);
+}
+
+body div.kagg-dialog.activate .kagg-dialog-container .kagg-dialog-box .kagg-dialog-buttons button.btn-ok {
+	background: var(--color-activate);
+	color: #ffffff
+}
+
+body div.kagg-dialog.deactivate .kagg-dialog-container .kagg-dialog-box {
+	color: var(--color-deactivate);
+}
+
+body div.kagg-dialog.deactivate .kagg-dialog-container .kagg-dialog-box .kagg-dialog-buttons button.btn-ok {
+	background: var(--color-deactivate);
+	color: #ffffff
+}
+
+body div.kagg-dialog.install .kagg-dialog-container .kagg-dialog-box {
+	color: var(--color-install);
+}
+
+body div.kagg-dialog.install .kagg-dialog-container .kagg-dialog-box .kagg-dialog-buttons button.btn-ok {
+	background: var(--color-install);
+	color: #ffffff
 }

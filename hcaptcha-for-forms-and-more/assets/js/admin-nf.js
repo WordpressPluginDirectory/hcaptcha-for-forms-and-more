@@ -1,7 +1,10 @@
-/* global Marionette, Backbone, HCaptchaAdminNFObject */
+/* global Marionette, Backbone, HCaptchaAdminNFObject, kaggDialog, nfDashInlineVars */
 
 /**
- * @param HCaptchaAdminNFObject.onlyOneHCaptchaAllowed
+ * @param HCaptchaAdminNFObject.OKBtnText
+ * @param HCaptchaAdminNFObject.hCaptchaTemplate
+ * @param HCaptchaAdminNFObject.onlyOne
+ * @param nfDashInlineVars.preloadedFormData.fields
  */
 
 document.addEventListener( 'DOMContentLoaded', function() {
@@ -44,9 +47,41 @@ document.addEventListener( 'DOMContentLoaded', function() {
 			if ( field ) {
 				e.stopImmediatePropagation();
 
-				// eslint-disable-next-line no-alert
-				alert( HCaptchaAdminNFObject.onlyOneHCaptchaAllowed );
+				kaggDialog.confirm( {
+					title: HCaptchaAdminNFObject.onlyOne,
+					content: '',
+					type: 'info',
+					buttons: {
+						ok: {
+							text: HCaptchaAdminNFObject.OKBtnText,
+						},
+					},
+				} );
 			}
+		},
+
+		/**
+		 * Render hCaptcha.
+		 *
+		 * @param {Object} node Node.
+		 */
+		renderHCaptcha( node ) {
+			const realElDiv = node.querySelector( '.nf-realistic-field--element div' );
+
+			if ( ! realElDiv ) {
+				return;
+			}
+
+			const hCaptcha = realElDiv.querySelector( '.h-captcha' );
+
+			if ( hCaptcha ) {
+				return;
+			}
+
+			const fields = nfDashInlineVars.preloadedFormData.fields;
+			const hCaptchaField = fields.find( ( field ) => field.type === fieldClass );
+
+			realElDiv.insertAdjacentHTML( 'beforeend', hCaptchaField.hcaptcha );
 		},
 
 		/**
@@ -105,11 +140,14 @@ document.addEventListener( 'DOMContentLoaded', function() {
 			const callback = ( mutationList ) => {
 				for ( const mutation of mutationList ) {
 					[ ...mutation.addedNodes ].map( ( node ) => {
-						if (
-							document.querySelector( '.h-captcha' ) &&
-							! document.querySelector( '.h-captcha iframe' )
-						) {
+						const hCaptcha = document.querySelector( '.h-captcha' );
+
+						if ( hCaptcha && hCaptcha.innerHTML.trim() === '' ) {
 							window.hCaptchaBindEvents();
+						}
+
+						if ( node.classList && node.classList.contains( fieldClass ) ) {
+							this.renderHCaptcha( node );
 						}
 
 						return node;

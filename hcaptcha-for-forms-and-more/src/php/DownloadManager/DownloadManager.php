@@ -17,12 +17,12 @@ class DownloadManager {
 	/**
 	 * Nonce action.
 	 */
-	const ACTION = 'hcaptcha_download_manager';
+	private const ACTION = 'hcaptcha_download_manager';
 
 	/**
 	 * Nonce name.
 	 */
-	const NONCE = 'hcaptcha_download_manager_nonce';
+	private const NONCE = 'hcaptcha_download_manager_nonce';
 
 	/**
 	 * DownloadManager constructor.
@@ -36,9 +36,10 @@ class DownloadManager {
 	 *
 	 * @return void
 	 */
-	public function init_hooks() {
+	public function init_hooks(): void {
 		add_action( 'wpdm_after_fetch_template', [ $this, 'add_hcaptcha' ], 10, 2 );
 		add_action( 'wpdm_onstart_download', [ $this, 'verify' ] );
+		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -91,7 +92,7 @@ class DownloadManager {
 	 * @noinspection ForgottenDebugOutputInspection
 	 * @noinspection PhpMissingParamTypeInspection
 	 */
-	public function verify( $package ) {
+	public function verify( $package ): void {
 
 		$result = hcaptcha_verify_post( self::NONCE, self::ACTION );
 
@@ -107,5 +108,27 @@ class DownloadManager {
 				'response'  => 303,
 			]
 		);
+	}
+
+	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 * @noinspection CssUnresolvedCustomProperty
+	 */
+	public function print_inline_styles(): void {
+		$css = <<<CSS
+	.wpdm-button-area + .h-captcha {
+		margin-bottom: 1rem;
+	}
+
+	.w3eden .btn-primary {
+		background-color: var(--color-primary) !important;
+		color: #fff !important;
+	}
+CSS;
+
+		HCaptcha::css_display( $css );
 	}
 }

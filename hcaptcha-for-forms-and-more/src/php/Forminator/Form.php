@@ -20,45 +20,44 @@ use Quform_Form;
  * Class Form.
  */
 class Form {
-
 	/**
 	 * Verify action.
 	 */
-	const ACTION = 'hcaptcha_forminator';
+	private const ACTION = 'hcaptcha_forminator';
 
 	/**
 	 * Verify nonce.
 	 */
-	const NONCE = 'hcaptcha_forminator_nonce';
+	private const NONCE = 'hcaptcha_forminator_nonce';
 
 	/**
 	 * Script handle.
 	 */
-	const HANDLE = 'hcaptcha-forminator';
+	private const HANDLE = 'hcaptcha-forminator';
 
 	/**
 	 * Admin script handle.
 	 */
-	const ADMIN_HANDLE = 'admin-forminator';
+	private const ADMIN_HANDLE = 'admin-forminator';
 
 	/**
 	 * Script localization object.
 	 */
-	const OBJECT = 'HCaptchaForminatorObject';
+	private const OBJECT = 'HCaptchaForminatorObject';
 
 	/**
 	 * Form id.
 	 *
 	 * @var int
 	 */
-	private $form_id = 0;
+	protected $form_id = 0;
 
 	/**
 	 * Form has hCaptcha field.
 	 *
 	 * @var bool
 	 */
-	private $has_hcaptcha_field;
+	protected $has_hcaptcha_field = false;
 
 	/**
 	 * Quform constructor.
@@ -72,7 +71,7 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public function init_hooks() {
+	public function init_hooks(): void {
 		add_action( 'forminator_before_form_render', [ $this, 'before_form_render' ], 10, 5 );
 		add_filter( 'forminator_render_button_markup', [ $this, 'add_hcaptcha' ], 10, 2 );
 		add_filter( 'forminator_cform_form_is_submittable', [ $this, 'verify' ], 10, 3 );
@@ -97,7 +96,7 @@ class Form {
 	 * @return void
 	 * @noinspection PhpUnusedParameterInspection
 	 */
-	public function before_form_render( $id, string $form_type, int $post_id, array $form_fields, array $form_settings ) {
+	public function before_form_render( $id, string $form_type, int $post_id, array $form_fields, array $form_settings ): void {
 		$this->has_hcaptcha_field = $this->has_hcaptcha_field( $form_fields );
 		$this->form_id            = $id;
 	}
@@ -169,9 +168,7 @@ class Form {
 			return true;
 		}
 
-		$is_forminator_wizard_page = $this->is_forminator_admin_page();
-
-		return $is_forminator_wizard_page ? true : $status;
+		return $this->is_forminator_admin_page() ? true : $status;
 	}
 
 	/**
@@ -179,7 +176,7 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts(): void {
 		if ( ! hcaptcha()->form_shown ) {
 			return;
 		}
@@ -200,7 +197,7 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public function admin_enqueue_scripts() {
+	public function admin_enqueue_scripts(): void {
 		if ( ! $this->is_forminator_admin_page() ) {
 			return;
 		}
@@ -275,7 +272,7 @@ class Form {
 	 *
 	 * @return bool
 	 */
-	private function is_forminator_admin_page(): bool {
+	protected function is_forminator_admin_page(): bool {
 		if ( ! is_admin() ) {
 			return false;
 		}
@@ -283,7 +280,9 @@ class Form {
 		$screen = get_current_screen();
 
 		if ( ! $screen ) {
+			// @codeCoverageIgnoreStart
 			return false;
+			// @codeCoverageIgnoreEnd
 		}
 
 		$forminator_admin_pages = [
@@ -307,7 +306,7 @@ class Form {
 	}
 
 	/**
-	 * Whether for has its own hCaptcha field.
+	 * Whether form has its own hCaptcha field.
 	 *
 	 * @param array $form_fields Form fields.
 	 *

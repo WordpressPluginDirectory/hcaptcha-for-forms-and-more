@@ -16,15 +16,21 @@ use WP_User;
 class Comment extends Base {
 
 	/**
+	 * Script handle.
+	 */
+	private const HANDLE = 'hcaptcha-wpdiscuz-comment';
+
+	/**
 	 * Add hooks.
 	 *
 	 * @return void
 	 */
-	public function init_hooks() {
+	public function init_hooks(): void {
 		parent::init_hooks();
 
 		add_filter( 'wpdiscuz_form_render', [ $this, 'add_hcaptcha' ], 10, 3 );
 		add_filter( 'preprocess_comment', [ $this, 'verify' ], 9 );
+		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -50,7 +56,7 @@ class Comment extends Base {
 		ob_start();
 		?>
 		<div class="wpd-field-hcaptcha wpdiscuz-item">
-			<div class="wpdiscuz-hcaptcha" id='wpdiscuz-hcaptcha'></div>
+			<div class="wpdiscuz-hcaptcha"></div>
 			<?php HCaptcha::form_display( $args ); ?>
 			<div class="clearfix"></div>
 		</div>
@@ -72,11 +78,21 @@ class Comment extends Base {
 	 * @noinspection ForgottenDebugOutputInspection
 	 */
 	public function verify( $comment_data ) {
+		// Nonce is checked by wpDiscuz.
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing
+		$action = isset( $_POST['action'] )
+			? sanitize_text_field( wp_unslash( $_POST['action'] ) )
+			: '';
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ( ! ( 'wpdAddComment' === $action && wp_doing_ajax() ) ) {
+			return $comment_data;
+		}
+
 		$wp_discuz = wpDiscuz();
 
 		remove_filter( 'preprocess_comment', [ $wp_discuz, 'validateRecaptcha' ] );
-
-		// Nonce is checked by wpDiscuz.
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing
 		$hcaptcha_response = isset( $_POST['h-captcha-response'] ) ?
@@ -93,5 +109,40 @@ class Comment extends Base {
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
 		wp_die( esc_html( $result ) );
+	}
+
+	/**
+	 * Enqueue Beaver Builder script.
+	 *
+	 * @return void
+	 */
+	public function enqueue_scripts(): void {
+		parent::enqueue_scripts();
+
+		$min = hcap_min_suffix();
+
+		wp_enqueue_script(
+			self::HANDLE,
+			HCAPTCHA_URL . "/assets/js/hcaptcha-wpdiscuz-comment$min.js",
+			[],
+			HCAPTCHA_VERSION,
+			true
+		);
+	}
+
+	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 */
+	public function print_inline_styles(): void {
+		$css = <<<CSS
+	.wpd-field-hcaptcha .h-captcha {
+		margin-left: auto;
+	}
+CSS;
+
+		HCaptcha::css_display( $css );
 	}
 }

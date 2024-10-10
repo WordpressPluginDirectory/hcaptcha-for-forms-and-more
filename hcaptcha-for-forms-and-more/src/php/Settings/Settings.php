@@ -21,11 +21,16 @@ use KAGG\Settings\Abstracts\SettingsInterface;
 class Settings implements SettingsInterface {
 
 	/**
+	 * Existing licenses.
+	 */
+	private const EXISTING_LICENSES = [ 'free', 'pro', 'enterprise' ];
+
+	/**
 	 * Menu pages class names.
 	 *
 	 * @var array
 	 */
-	protected $menu_pages_classes;
+	protected $menu_groups;
 
 	/**
 	 * Menu pages and tabs in one flat array.
@@ -35,45 +40,38 @@ class Settings implements SettingsInterface {
 	protected $tabs = [];
 
 	/**
-	 * Screen ids of pages and tabs.
-	 *
-	 * @var array
-	 */
-	private $screen_ids = [];
-
-	/**
 	 * Settings constructor.
 	 *
-	 * @param array $menu_pages_classes Menu pages.
+	 * @param array $menu_groups Menu items.
 	 */
-	public function __construct( array $menu_pages_classes = [] ) {
-		// Allow to specify $menu_pages_classes item as one class, not an array.
-		$this->menu_pages_classes = $menu_pages_classes;
+	public function __construct( array $menu_groups = [] ) {
+		$this->menu_groups = $menu_groups;
 
 		$this->init();
 	}
 
 	/**
 	 * Init class.
+	 *
+	 * @return void
 	 */
-	protected function init() {
-		foreach ( $this->menu_pages_classes as $menu_page_classes ) {
-			$tab_classes = (array) $menu_page_classes;
+	protected function init(): void {
+		foreach ( $this->menu_groups as $menu_group ) {
+			$classes = (array) ( $menu_group['classes'] ?? [] );
+			$args    = $menu_group['args'] ?? [];
 
-			// Allow specifying menu page as one class, without tabs.
-			$page_class  = $tab_classes[0];
-			$tab_classes = array_slice( $tab_classes, 1 );
+			$page_class  = $classes[0];
+			$tab_classes = array_slice( $classes, 1 );
+			$tabs        = [];
 
-			$tabs = [];
 			foreach ( $tab_classes as $tab_class ) {
 				/**
 				 * Tab.
 				 *
 				 * @var PluginSettingsBase $tab
 				 */
-				$tab                = new $tab_class( null );
-				$tabs[]             = $tab;
-				$this->screen_ids[] = $tab->screen_id();
+				$tab    = new $tab_class( null, $args );
+				$tabs[] = $tab;
 			}
 
 			/**
@@ -81,13 +79,13 @@ class Settings implements SettingsInterface {
 			 *
 			 * @var PluginSettingsBase $page_class
 			 */
-			$menu_page = new $page_class( $tabs );
+			$menu_page = new $page_class( $tabs, $args );
 
 			$this->tabs[] = [ $menu_page ];
 			$this->tabs[] = $tabs;
 		}
 
-		$this->tabs = array_merge( [], ...$this->tabs );
+		$this->tabs = array_merge( [], ...array_filter( $this->tabs ) );
 	}
 
 	/**
@@ -97,6 +95,61 @@ class Settings implements SettingsInterface {
 	 */
 	public function get_tabs(): array {
 		return $this->tabs;
+	}
+
+	/**
+	 * Get tab.
+	 *
+	 * @param string $classname Class name.
+	 *
+	 * @return PluginSettingsBase|null
+	 */
+	public function get_tab( string $classname ): ?PluginSettingsBase {
+		foreach ( $this->tabs as $tab ) {
+			if ( is_a( $tab, $classname ) ) {
+				return $tab;
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Get active tab name.
+	 *
+	 * @return string
+	 */
+	public function get_active_tab_name(): string {
+		$first_tab = $this->tabs[0] ?? null;
+
+		return $first_tab ? $first_tab->get_active_tab()->tab_name() : '';
+	}
+
+	/**
+	 * Check if it is a Pro account.
+	 *
+	 * @return false
+	 */
+	public function is_pro(): bool {
+		return 'pro' === $this->get_license();
+	}
+
+	/**
+	 * Check if it is a Pro account or General admin page.
+	 *
+	 * @return bool
+	 */
+	public function is_pro_or_general(): bool {
+		return $this->is_pro() || ( is_admin() && 'General' === $this->get_active_tab_name() );
+	}
+
+	/**
+	 * Get config params.
+	 *
+	 * @return array
+	 */
+	public function get_config_params(): array {
+		return (array) ( json_decode( $this->get( 'config_params' ), true ) ?: [] );
 	}
 
 	/**
@@ -154,7 +207,7 @@ class Settings implements SettingsInterface {
 	}
 
 	/**
-	 * Check whether option value equals to the compared.
+	 * Check whether option value equals to the compared one.
 	 *
 	 * @param string $key     Setting name.
 	 * @param string $compare Compared value.
@@ -222,21 +275,6 @@ class Settings implements SettingsInterface {
 	}
 
 	/**
-	 * Get mode.
-	 *
-	 * @return string
-	 */
-	public function get_mode(): string {
-
-		/**
-		 * Filters the current operating mode to get a relevant key pair.
-		 *
-		 * @param string $mode Current operating mode.
-		 */
-		return (string) apply_filters( 'hcap_mode', $this->get( 'mode' ) );
-	}
-
-	/**
 	 * Get a site key.
 	 *
 	 * @return string
@@ -267,6 +305,26 @@ class Settings implements SettingsInterface {
 	}
 
 	/**
+	 * Get theme.
+	 *
+	 * @return string
+	 */
+	public function get_theme(): string {
+		$theme = $this->get( 'theme' );
+
+		if ( $this->is_on( 'custom_themes' ) && $this->is_pro_or_general() ) {
+			$theme = $this->get_config_params()['theme']['palette']['mode'] ?? $theme;
+		}
+
+		/**
+		 * Filters the current theme to get a relevant key pair.
+		 *
+		 * @param string $mode Current theme.
+		 */
+		return (string) apply_filters( 'hcap_theme', $theme );
+	}
+
+	/**
 	 * Get language.
 	 *
 	 * @return string
@@ -282,6 +340,226 @@ class Settings implements SettingsInterface {
 	}
 
 	/**
+	 * Get mode.
+	 *
+	 * @return string
+	 */
+	public function get_mode(): string {
+
+		/**
+		 * Filters the current operating mode to get a relevant key pair.
+		 *
+		 * @param string $mode Current operating mode.
+		 */
+		return (string) apply_filters( 'hcap_mode', $this->get( 'mode' ) );
+	}
+
+	/**
+	 * Get license level.
+	 *
+	 * @return string
+	 */
+	public function get_license(): string {
+		$license = (string) $this->get( 'license' );
+
+		return in_array( $license, self::EXISTING_LICENSES, true ) ? $license : 'free';
+	}
+
+	/**
+	 * Get the default hCaptcha theme.
+	 *
+	 * @return array
+	 */
+	public function get_default_theme(): array {
+		return [
+			'palette'   => [
+				'mode'    => 'light',
+				'grey'    => [
+					100  => '#fafafa',
+					200  => '#f5f5f5',
+					300  => '#e0e0e0',
+					400  => '#d7d7d7',
+					500  => '#bfbfbf',
+					600  => '#919191',
+					700  => '#555555',
+					800  => '#333333',
+					900  => '#222222',
+					1000 => '#14191f',
+				],
+				'primary' => [
+					'main' => '#00838f',
+				],
+				'warn'    => [
+					'main' => '#eb5757',
+				],
+				'text'    => [
+					'heading' => '#555555',
+					'body'    => '#555555',
+				],
+			],
+			'component' => [
+				'checkbox'     => [
+					'main'  => [
+						'fill'   => '#fafafa',
+						'border' => '#e0e0e0',
+					],
+					'hover' => [
+						'fill' => '#f5f5f5',
+					],
+				],
+				'challenge'    => [
+					'main'  => [
+						'fill'   => '#fafafa',
+						'border' => '#e0e0e0',
+					],
+					'hover' => [
+						'fill' => '#fafafa',
+					],
+				],
+				'modal'        => [
+					'main'  => [
+						'fill'   => '#ffffff',
+						'border' => '#e0e0e0',
+					],
+					'hover' => [
+						'fill' => '#f5f5f5',
+					],
+					'focus' => [
+						'border' => '#0074bf',
+					],
+				],
+				'breadcrumb'   => [
+					'main'   => [
+						'fill' => '#f5f5f5',
+					],
+					'active' => [
+						'fill' => '#00838f',
+					],
+				],
+				'button'       => [
+					'main'   => [
+						'fill' => '#ffffff',
+						'icon' => '#555555',
+						'text' => '#555555',
+					],
+					'hover'  => [
+						'fill' => '#f5f5f5',
+					],
+					'focus'  => [
+						'icon' => '#00838f',
+						'text' => '#00838f',
+					],
+					'active' => [
+						'fill' => '#f5f5f5',
+						'icon' => '#555555',
+						'text' => '#555555',
+					],
+				],
+				'list'         => [
+					'main' => [
+						'fill'   => '#ffffff',
+						'border' => '#d7d7d7',
+					],
+				],
+				'listItem'     => [
+					'main'     => [
+						'fill' => '#ffffff',
+						'line' => '#f5f5f5',
+						'text' => '#555555',
+					],
+					'hover'    => [
+						'fill' => '#f5f5f5',
+					],
+					'selected' => [
+						'fill' => '#e0e0e0',
+					],
+				],
+				'input'        => [
+					'main'  => [
+						'fill'   => '#fafafa',
+						'border' => '#919191',
+					],
+					'focus' => [
+						'fill'   => '#f5f5f5',
+						'border' => '#333333',
+					],
+				],
+				'radio'        => [
+					'main'     => [
+						'file'   => '#f5f5f5',
+						'border' => '#919191',
+						'check'  => '#f5f5f5',
+					],
+					'selected' => [
+						'check' => '#00838f',
+					],
+				],
+				'task'         => [
+					'main'     => [
+						'fill' => '#f5f5f5',
+					],
+					'selected' => [
+						'border' => '#00838f',
+					],
+					'report'   => [
+						'border' => '#eb5757',
+					],
+				],
+				'prompt'       => [
+					'main'   => [
+						'fill'   => '#00838f',
+						'border' => '#00838f',
+						'text'   => '#ffffff',
+					],
+					'report' => [
+						'fill'   => '#eb5757',
+						'border' => '#eb5757',
+						'text'   => '#ffffff',
+					],
+				],
+				'skipButton'   => [
+					'main'  => [
+						'fill'   => '#919191',
+						'border' => '#919191',
+						'text'   => '#ffffff',
+					],
+					'hover' => [
+						'fill'   => '#555555',
+						'border' => '#919191',
+						'text'   => '#ffffff',
+					],
+				],
+				'verifyButton' => [
+					'main'  => [
+						'fill'   => '#00838f',
+						'border' => '#00838f',
+						'text'   => '#ffffff',
+					],
+					'hover' => [
+						'fill'   => '#00838f',
+						'border' => '#00838f',
+						'text'   => '#ffffff',
+					],
+				],
+				'expandButton' => [
+					'main' => [
+						'fill' => '#00838f',
+					],
+				],
+				'slider'       => [
+					'main'  => [
+						'bar'    => '#c4c4c4',
+						'handle' => '#0f8390',
+					],
+					'focus' => [
+						'handle' => '#0f8390',
+					],
+				],
+			],
+		];
+	}
+
+	/**
 	 * Set field.
 	 *
 	 * @param string $key       Setting name.
@@ -290,7 +568,7 @@ class Settings implements SettingsInterface {
 	 *
 	 * @return void
 	 */
-	public function set_field( string $key, string $field_key, $value ) {
+	public function set_field( string $key, string $field_key, $value ): void {
 		foreach ( $this->tabs as $tab ) {
 			/**
 			 * Page / Tab.
@@ -301,15 +579,5 @@ class Settings implements SettingsInterface {
 				break;
 			}
 		}
-	}
-
-	/**
-	 * Get screen ids of all settings pages and tabs.
-	 *
-	 * @return array
-	 * @noinspection PhpUnused
-	 */
-	public function screen_ids(): array {
-		return $this->screen_ids;
 	}
 }

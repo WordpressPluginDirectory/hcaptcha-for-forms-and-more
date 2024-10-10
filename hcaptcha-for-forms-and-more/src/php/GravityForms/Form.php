@@ -5,9 +5,13 @@
  * @package hcaptcha-wp
  */
 
+// phpcs:ignore Generic.Commenting.DocComment.MissingShort
+/** @noinspection PhpUndefinedClassInspection */
+
 namespace HCaptcha\GravityForms;
 
 use GFFormsModel;
+use GP_Field_Nested_Form;
 use HCaptcha\Helpers\HCaptcha;
 
 /**
@@ -17,14 +21,14 @@ class Form extends Base {
 	/**
 	 * Script handle.
 	 */
-	const HANDLE = 'hcaptcha-gravity-forms';
+	public const HANDLE = 'hcaptcha-gravity-forms';
 
 	/**
 	 * The hCaptcha error message.
 	 *
 	 * @var string|null
 	 */
-	private $error_message;
+	protected $error_message;
 
 	/**
 	 * Whether hCaptcha should be auto-added to any form.
@@ -49,8 +53,10 @@ class Form extends Base {
 
 	/**
 	 * Init hooks.
+	 *
+	 * @return void
 	 */
-	private function init_hooks() {
+	private function init_hooks(): void {
 		$this->mode_auto  = hcaptcha()->settings()->is( 'gravity_status', 'form' );
 		$this->mode_embed = hcaptcha()->settings()->is( 'gravity_status', 'embed' );
 
@@ -184,43 +190,45 @@ class Form extends Base {
 	 * Print inline styles.
 	 *
 	 * @return void
+	 * @noinspection CssUnusedSymbol
 	 */
-	public function print_inline_styles() {
-		?>
-		<!--suppress CssUnusedSymbol -->
-		<style>
-		.gform_previous_button + .h-captcha {
-			margin-top: 2rem;
-		}
-		.gform_footer.before .h-captcha[data-size="normal"] {
-			margin-bottom: 3px;
-		}
-		.gform_footer.before .h-captcha[data-size="compact"] {
-			margin-bottom: 0;
-		}
+	public function print_inline_styles(): void {
+		$css = <<<CSS
+	.gform_previous_button + .h-captcha {
+		margin-top: 2rem;
+	}
 
-		.gform_wrapper.gravity-theme .gform_footer,
-		.gform_wrapper.gravity-theme .gform_page_footer {
-			flex-wrap: wrap;
-		}
+	.gform_footer.before .h-captcha[data-size="normal"] {
+		margin-bottom: 3px;
+	}
 
-		.gform_wrapper.gravity-theme .h-captcha,
-		.gform_wrapper.gravity-theme .h-captcha {
-			margin: 0;
-			flex-basis: 100%;
-		}
+	.gform_footer.before .h-captcha[data-size="compact"] {
+		margin-bottom: 0;
+	}
 
-		.gform_wrapper.gravity-theme input[type="submit"],
-		.gform_wrapper.gravity-theme input[type="submit"] {
-			align-self: flex-start;
-		}
+	.gform_wrapper.gravity-theme .gform_footer,
+	.gform_wrapper.gravity-theme .gform_page_footer {
+		flex-wrap: wrap;
+	}
 
-		.gform_wrapper.gravity-theme .h-captcha ~ input[type="submit"],
-		.gform_wrapper.gravity-theme .h-captcha ~ input[type="submit"] {
-			margin: 1em 0 0 0 !important;
-		}
-		</style>
-		<?php
+	.gform_wrapper.gravity-theme .h-captcha,
+	.gform_wrapper.gravity-theme .h-captcha {
+		margin: 0;
+		flex-basis: 100%;
+	}
+
+	.gform_wrapper.gravity-theme input[type="submit"],
+	.gform_wrapper.gravity-theme input[type="submit"] {
+		align-self: flex-start;
+	}
+
+	.gform_wrapper.gravity-theme .h-captcha ~ input[type="submit"],
+	.gform_wrapper.gravity-theme .h-captcha ~ input[type="submit"] {
+		margin: 1em 0 0 0 !important;
+	}
+CSS;
+
+		HCaptcha::css_display( $css );
 	}
 
 	/**
@@ -228,7 +236,7 @@ class Form extends Base {
 	 *
 	 * @return void
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts(): void {
 		if ( ! hcaptcha()->form_shown ) {
 			return;
 		}
@@ -258,17 +266,47 @@ class Form extends Base {
 			return false;
 		}
 
-		if ( isset( $_POST['gpnf_parent_form_id'] ) ) {
-			// Do not verify nested form.
-			return false;
+		$form_id = (int) $_POST['gform_submit'];
+
+		// Nested form.
+		$parent_form_id = isset( $_POST['gpnf_parent_form_id'] ) ? (int) $_POST['gpnf_parent_form_id'] : 0;
+
+		if ( $parent_form_id ) {
+			$fields = (array) GFFormsModel::get_form_meta( $parent_form_id )['fields'];
+
+			foreach ( $fields as $field ) {
+				// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+				if ( $field instanceof GP_Field_Nested_Form && (int) $field->gpnfForm === $form_id ) {
+
+					// Do not verify nested form.
+					return false;
+				}
+			}
 		}
 
-		$form_id     = (int) $_POST['gform_submit'];
-		$target_page = "gform_target_page_number_$form_id";
+		// Multipage form.
+		$target_page_name = "gform_target_page_number_$form_id";
 
-		if ( isset( $_POST[ $target_page ] ) && 0 !== (int) $_POST[ $target_page ] ) {
-			// Do not verify hCaptcha and return success when switching between form pages.
-			return false;
+		if ( isset( $_POST[ $target_page_name ] ) ) {
+			$source_page_name = "gform_source_page_number_$form_id";
+
+			$target_page = (int) $_POST[ $target_page_name ];
+			$source_page = isset( $_POST[ $source_page_name ] ) ? (int) $_POST[ $source_page_name ] : 0;
+
+			$form_meta = (array) GFFormsModel::get_form_meta( $form_id );
+
+			if (
+				0 !== (int) $_POST[ $target_page_name ] &&
+				$target_page !== $source_page &&
+				isset(
+					$form_meta['pagination']['pages'][ $target_page - 1 ],
+					$form_meta['pagination']['pages'][ $source_page - 1 ]
+				)
+			) {
+
+				// Do not verify hCaptcha and return success when switching between form pages.
+				return false;
+			}
 		}
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 

@@ -2,19 +2,30 @@
  * Ninja Forms controller file.
  */
 
-/* global hcaptcha, Marionette, Backbone */
+/* global Marionette, nfRadio */
 
-// On Document Ready.
+wp.hooks.addFilter(
+	'hcaptcha.ajaxSubmitButton',
+	'hcaptcha',
+	( isAjaxSubmitButton, submitButtonElement ) => {
+		if ( submitButtonElement.classList.contains( 'nf-element' ) ) {
+			return true;
+		}
+
+		return isAjaxSubmitButton;
+	}
+);
+
 document.addEventListener( 'DOMContentLoaded', function() {
 	const HCaptchaFieldController = Marionette.Object.extend( {
 		initialize() {
 			// On the Form Submission's field validation.
-			const submitChannel = Backbone.Radio.channel( 'submit' );
+			const submitChannel = nfRadio.channel( 'submit' );
 			this.listenTo( submitChannel, 'validate:field', this.updateHcaptcha );
 			this.listenTo( submitChannel, 'validate:field', this.updateHcaptcha );
 
 			// On the Field's model value change.
-			const fieldsChannel = Backbone.Radio.channel( 'fields' );
+			const fieldsChannel = nfRadio.channel( 'fields' );
 			this.listenTo( fieldsChannel, 'change:modelValue', this.updateHcaptcha );
 		},
 
@@ -27,21 +38,17 @@ document.addEventListener( 'DOMContentLoaded', function() {
 			// Check if the Model has a value.
 			if ( model.get( 'value' ) ) {
 				// Remove Error from Model.
-				Backbone.Radio.channel( 'fields' ).request(
+				nfRadio.channel( 'fields' ).request(
 					'remove:error',
 					model.get( 'id' ),
 					'required-error'
 				);
 			} else {
 				const fieldId = model.get( 'id' );
-				const widget = document.querySelector( '.h-captcha[data-fieldId="' + fieldId + '"] iframe' );
+				const hcapResponse = document.querySelector(
+					'.h-captcha[data-fieldId="' + fieldId + '"] textarea[name="h-captcha-response"]'
+				);
 
-				if ( ! widget ) {
-					return;
-				}
-
-				const widgetId = widget.dataset.hcaptchaWidgetId;
-				const hcapResponse = hcaptcha.getResponse( widgetId );
 				model.set( 'value', hcapResponse );
 			}
 		},
@@ -56,7 +63,11 @@ document.addEventListener( 'DOMContentLoaded', function() {
 ( function( $ ) {
 	// noinspection JSCheckFunctionSignatures
 	$.ajaxPrefilter( function( options ) {
-		const data = options.data;
+		const data = options.data ?? '';
+
+		if ( ! ( typeof data === 'string' || data instanceof String ) ) {
+			return;
+		}
 
 		if ( ! data.startsWith( 'action=nf_ajax_submit' ) ) {
 			return;

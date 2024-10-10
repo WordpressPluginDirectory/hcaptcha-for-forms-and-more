@@ -26,11 +26,12 @@ abstract class Base {
 	 *
 	 * @return void
 	 */
-	private function init_hooks() {
+	private function init_hooks(): void {
 		add_action( static::ADD_CAPTCHA_HOOK, [ $this, 'add_captcha' ], 99 );
 		add_filter( static::VERIFY_HOOK, [ $this, 'verify' ] );
 		add_action( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
+		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -38,7 +39,7 @@ abstract class Base {
 	 *
 	 * @param array|int $topic Topic info.
 	 */
-	public function add_captcha( $topic ) {
+	public function add_captcha( $topic ): void {
 		$form_id = 0;
 
 		if ( current_action() === Reply::ADD_CAPTCHA_HOOK ) {
@@ -100,7 +101,7 @@ abstract class Base {
 	 *
 	 * @return void
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts(): void {
 		$min = hcap_min_suffix();
 
 		wp_enqueue_script(
@@ -110,5 +111,38 @@ abstract class Base {
 			HCAPTCHA_VERSION,
 			true
 		);
+	}
+
+	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 */
+	public function print_inline_styles(): void {
+		static $style_shown;
+
+		if ( $style_shown ) {
+			return;
+		}
+
+		$style_shown = true;
+
+		$css = <<<CSS
+	#wpforo #wpforo-wrap div .h-captcha {
+		position: relative;
+		display: block;
+		margin-bottom: 2rem;
+		padding: 0;
+		clear: both;
+	}
+
+	#wpforo #wpforo-wrap.wpft-topic div .h-captcha,
+	#wpforo #wpforo-wrap.wpft-forum div .h-captcha {
+		margin: 0 -20px;
+	}
+CSS;
+
+		HCaptcha::css_display( $css );
 	}
 }

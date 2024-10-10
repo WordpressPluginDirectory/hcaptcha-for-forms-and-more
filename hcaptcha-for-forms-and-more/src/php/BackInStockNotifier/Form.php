@@ -17,17 +17,17 @@ class Form {
 	/**
 	 * Script handle.
 	 */
-	const HANDLE = 'hcaptcha-back-in-stock-notifier';
+	private const HANDLE = 'hcaptcha-back-in-stock-notifier';
 
 	/**
 	 * Nonce action.
 	 */
-	const ACTION = 'hcaptcha_back_in_stock_notifier';
+	private const ACTION = 'hcaptcha_back_in_stock_notifier';
 
 	/**
 	 * Nonce name.
 	 */
-	const NONCE = 'hcaptcha_back_in_stock_notifier_nonce';
+	private const NONCE = 'hcaptcha_back_in_stock_notifier_nonce';
 
 	/**
 	 * Form id.
@@ -48,13 +48,14 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public function init_hooks() {
+	public function init_hooks(): void {
 		add_action( 'cwg_instock_after_email_field', [ $this, 'after_email_field' ], 10, 2 );
 		add_action( 'cwginstock_after_submit_button', [ $this, 'after_submit_button' ], 10, 2 );
 		add_action( 'cwginstock_ajax_data', [ $this, 'verify' ], 0, 2 );
 
 		// Fire it before the same in Main, which is on 0.
 		add_action( 'wp_print_footer_scripts', [ $this, 'enqueue_scripts' ], - 1 );
+		add_filter( 'script_loader_tag', [ $this, 'add_type_module' ], 10, 3 );
 	}
 
 	/**
@@ -66,7 +67,7 @@ class Form {
 	 * @return void
 	 * @noinspection PhpUnusedParameterInspection
 	 */
-	public function after_email_field( int $product_id, int $variation_id ) {
+	public function after_email_field( int $product_id, int $variation_id ): void {
 		$this->form_id = $product_id;
 
 		ob_start();
@@ -81,7 +82,7 @@ class Form {
 	 * @return void
 	 * @noinspection PhpUnusedParameterInspection
 	 */
-	public function after_submit_button( int $product_id, int $variation_id ) {
+	public function after_submit_button( int $product_id, int $variation_id ): void {
 		$output = ob_get_clean();
 
 		$args = [
@@ -109,7 +110,7 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public function verify( array $post_data, bool $rest_api ) {
+	public function verify( array $post_data, bool $rest_api ): void {
 
 		$hcaptcha_response = $post_data['h-captcha-response'] ?? '';
 
@@ -135,7 +136,7 @@ class Form {
 	 * @return void
 	 * @noinspection PhpUndefinedFunctionInspection
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts(): void {
 		if ( is_shop() ) {
 			/**
 			 * The form will be loaded on Ajax.
@@ -157,5 +158,33 @@ class Form {
 			HCAPTCHA_VERSION,
 			true
 		);
+	}
+
+	/**
+	 * Add type="module" attribute to script tag.
+	 *
+	 * @param string|mixed $tag    Script tag.
+	 * @param string       $handle Script handle.
+	 * @param string       $src    Script source.
+	 *
+	 * @return string
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function add_type_module( $tag, string $handle, string $src ): string {
+		$tag = (string) $tag;
+
+		if ( self::HANDLE !== $handle ) {
+			return $tag;
+		}
+
+		$type = ' type="module"';
+
+		if ( false !== strpos( $tag, $type ) ) {
+			return $tag;
+		}
+
+		$search = ' src';
+
+		return str_replace( $search, $type . $search, $tag );
 	}
 }

@@ -7,6 +7,8 @@
 
 namespace HCaptcha\ColorlibCustomizer;
 
+use HCaptcha\Helpers\HCaptcha;
+
 /**
  * Class Login
  */
@@ -21,8 +23,10 @@ abstract class Base {
 
 	/**
 	 * Init hooks.
+	 *
+	 * @return void
 	 */
-	protected function init_hooks() {
+	protected function init_hooks(): void {
 		add_action( 'login_head', [ $this, 'login_head' ] );
 	}
 
@@ -31,15 +35,14 @@ abstract class Base {
 	 *
 	 * @return void
 	 */
-	public function login_head() {
+	public function login_head(): void {
 		$hcaptcha_size = hcaptcha()->settings()->get( 'size' );
 
 		if ( 'invisible' === $hcaptcha_size ) {
 			return;
 		}
 
-		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo $this->get_style( $hcaptcha_size );
+		HCaptcha::css_display( $this->get_style( $hcaptcha_size ) );
 	}
 
 	/**
@@ -48,6 +51,26 @@ abstract class Base {
 	 * @param string $hcaptcha_size hCaptcha widget size.
 	 *
 	 * @return string
+	 * @noinspection CssUnusedSymbol
 	 */
-	abstract protected function get_style( string $hcaptcha_size ): string;
+	protected function get_style( string $hcaptcha_size ): string {
+		static $style_shown;
+
+		if ( $style_shown ) {
+			return '';
+		}
+
+		$style_shown = true;
+		$css         = '';
+
+		if ( 'normal' === $hcaptcha_size ) {
+			$css = <<<CSS
+	.ml-container #login {
+		min-width: 350px;
+	}
+CSS;
+		}
+
+		return $css;
+	}
 }

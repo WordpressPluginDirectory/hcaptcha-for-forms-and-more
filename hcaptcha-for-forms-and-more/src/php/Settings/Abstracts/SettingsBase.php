@@ -19,17 +19,42 @@ abstract class SettingsBase {
 	/**
 	 * Admin script handle.
 	 */
-	const HANDLE = 'settings-base';
+	public const HANDLE = 'settings-base';
 
 	/**
 	 * Plugin prefix.
 	 */
-	const PREFIX = 'kagg';
+	public const PREFIX = 'kagg';
 
 	/**
 	 * Network-wide option suffix.
 	 */
-	const NETWORK_WIDE = '_network_wide';
+	public const NETWORK_WIDE = '_network_wide';
+
+	/**
+	 * Pages mode.
+	 */
+	public const MODE_PAGES = 'pages';
+
+	/**
+	 * Tabs mode.
+	 */
+	public const MODE_TABS = 'tabs';
+
+	/**
+	 * Menu position.
+	 *
+	 * A number after 58.9 (WPForms),
+	 * but before 59 (Separator) and 60 (Appearance) to avoid conflicts with other plugins.
+	 */
+	private const POSITION = 58.99;
+
+	/**
+	 * Network-wide menu position.
+	 *
+	 * A number before 25 (Settings) to avoid conflicts with other plugins.
+	 */
+	private const NETWORK_WIDE_POSITION = 24.99;
 
 	/**
 	 * Form fields.
@@ -53,11 +78,11 @@ abstract class SettingsBase {
 	protected $tabs;
 
 	/**
-	 * Prefix for minified files.
+	 * Suffix for minified files.
 	 *
 	 * @var string
 	 */
-	protected $min_prefix;
+	protected $min_suffix;
 
 	/**
 	 * Fields and their print methods.
@@ -67,11 +92,26 @@ abstract class SettingsBase {
 	protected $fields;
 
 	/**
-	 * Get screen id.
+	 * Parent slug.
+	 * By default, add menu pages to Options menu.
 	 *
-	 * @return string
+	 * @var string
 	 */
-	abstract public function screen_id(): string;
+	protected $parent_slug;
+
+	/**
+	 * Mode of the settings page, e.g. 'pages' or 'tabs'.
+	 *
+	 * @var string
+	 */
+	protected $admin_mode = self::MODE_PAGES;
+
+	/**
+	 * Position of the menu.
+	 *
+	 * @var float
+	 */
+	protected $position;
 
 	/**
 	 * Get an option group.
@@ -173,11 +213,14 @@ abstract class SettingsBase {
 	 * SettingsBase constructor.
 	 *
 	 * @param array|null $tabs Tabs of this settings page.
+	 * @param array      $args Arguments.
 	 *
 	 * @noinspection PhpMissingParamTypeInspection
 	 */
-	public function __construct( $tabs = [] ) {
+	public function __construct( $tabs = [], $args = [] ) {
 		$this->tabs = $tabs;
+
+		$this->process_args( $args );
 
 		$this->fields = [
 			'text'     => [ $this, 'print_text_field' ],
@@ -189,13 +232,17 @@ abstract class SettingsBase {
 			'radio'    => [ $this, 'print_radio_field' ],
 			'select'   => [ $this, 'print_select_field' ],
 			'multiple' => [ $this, 'print_multiple_select_field' ],
+			'file'     => [ $this, 'print_file_field' ],
 			'table'    => [ $this, 'print_table_field' ],
 			'button'   => [ $this, 'print_button_field' ],
 		];
 
-		if ( ! $this->is_tab() ) {
+		if ( self::MODE_PAGES === $this->admin_mode || ! $this->is_tab() ) {
 			add_action( 'current_screen', [ $this, 'setup_tabs_section' ], 9 );
-			add_action( 'admin_menu', [ $this, 'add_settings_page' ] );
+
+			$tag = $this->is_network_wide() ? 'network_admin_menu' : 'admin_menu';
+
+			add_action( $tag, [ $this, 'add_settings_page' ] );
 		}
 
 		$this->init();
@@ -204,54 +251,94 @@ abstract class SettingsBase {
 	/**
 	 * Init class.
 	 *
+	 * @return void
 	 * @noinspection UnusedFunctionResultInspection
 	 */
-	public function init() {
-		$this->min_prefix = defined( 'SCRIPT_DEBUG' ) && constant( 'SCRIPT_DEBUG' ) ? '' : '.min';
+	public function init(): void {
+		$this->min_suffix = defined( 'SCRIPT_DEBUG' ) && constant( 'SCRIPT_DEBUG' ) ? '' : '.min';
 
 		$this->form_fields();
 		$this->init_settings();
 
-		if ( $this->is_tab_active( $this ) ) {
+		if ( is_admin() && ( $this->is_main_menu_page() || $this->is_tab_active( $this ) ) ) {
 			$this->init_hooks();
 		}
 	}
 
 	/**
 	 * Init class hooks.
+	 *
+	 * @return void
 	 */
-	protected function init_hooks() {
-		add_action( 'plugins_loaded', [ $this, 'load_plugin_textdomain' ] );
-
-		add_filter(
-			'plugin_action_links_' . $this->plugin_basename(),
-			[ $this, 'add_settings_link' ]
-		);
-
-		add_action( 'current_screen', [ $this, 'setup_fields' ] );
-		add_action( 'current_screen', [ $this, 'setup_sections' ], 11 );
-
-		add_filter( 'pre_update_option_' . $this->option_name(), [ $this, 'pre_update_option_filter' ], 10, 2 );
-		add_filter( 'pre_update_site_option_option_' . $this->option_name(), [ $this, 'pre_update_option_filter' ], 10, 2 );
-
+	protected function init_hooks(): void {
 		add_action( 'admin_enqueue_scripts', [ $this, 'base_admin_enqueue_scripts' ] );
+		add_action( 'admin_page_access_denied', [ $this, 'base_admin_page_access_denied' ] );
+
+		if ( $this->is_main_menu_page() ) {
+			add_action( 'plugins_loaded', [ $this, 'load_plugin_textdomain' ] );
+			add_filter( 'plugin_action_links_' . $this->plugin_basename(), [ $this, 'add_settings_link' ] );
+			add_filter( 'network_admin_plugin_action_links_' . $this->plugin_basename(), [ $this, 'add_settings_link' ] );
+		}
+
+		if ( $this->is_tab_active( $this ) ) {
+			add_filter( 'pre_update_option_' . $this->option_name(), [ $this, 'pre_update_option_filter' ], 10, 2 );
+			add_filter(
+				'pre_update_site_option_option_' . $this->option_name(),
+				[ $this, 'pre_update_option_filter' ],
+				10,
+				2
+			);
+
+			add_action( 'current_screen', [ $this, 'setup_fields' ] );
+			add_action( 'current_screen', [ $this, 'setup_sections' ], 11 );
+		}
 	}
 
 	/**
 	 * Init form fields.
+	 *
+	 * @return void
 	 */
-	public function init_form_fields() {
+	public function init_form_fields(): void {
 		$this->form_fields = [];
 	}
 
 	/**
-	 * Get parent slug.
+	 * Process arguments.
 	 *
-	 * @return string
+	 * @param array $args Arguments.
+	 *
+	 * @return void
 	 */
-	protected function parent_slug(): string {
-		// By default, add menu pages to Options menu.
-		return 'options-general.php';
+	protected function process_args( array $args ): void {
+		$args = wp_parse_args(
+			$args,
+			[
+				'mode'     => $this->get_menu_position(),
+				'parent'   => null,
+				'position' => null,
+			]
+		);
+
+		$this->admin_mode = in_array( $args['mode'], [ self::MODE_PAGES, self::MODE_TABS ], true ) ?
+			$args['mode'] :
+			self::MODE_PAGES;
+
+		if ( null === $args['parent'] ) {
+			$wp_settings_slug  = is_multisite() && $this->is_network_wide() ? 'settings.php' : 'options-general.php';
+			$this->parent_slug = self::MODE_PAGES === $this->admin_mode ? '' : $wp_settings_slug;
+		} else {
+			$this->parent_slug = $args['parent'];
+		}
+
+		if ( null === $args['position'] ) {
+			$hash           = hexdec( sha1( self::PREFIX ) );
+			$pow            = floor( log10( $hash ) );
+			$position       = is_multisite() && $this->is_network_wide() ? self::NETWORK_WIDE_POSITION : self::POSITION;
+			$this->position = round( $position + $hash / 10 ** ( $pow + 4 ), 6 );
+		} else {
+			$this->position = (float) $args['position'];
+		}
 	}
 
 	/**
@@ -260,8 +347,8 @@ abstract class SettingsBase {
 	 * @return bool
 	 */
 	protected function is_main_menu_page(): bool {
-		// The main menu page should have empty string as parent slug.
-		return ! $this->parent_slug();
+		// The main menu page has tabs as an array.
+		return null !== $this->tabs;
 	}
 
 	/**
@@ -270,7 +357,7 @@ abstract class SettingsBase {
 	 * @return string
 	 * @noinspection PhpUnused
 	 */
-	protected function tab_name(): string {
+	public function tab_name(): string {
 		return $this->get_class_name();
 	}
 
@@ -286,7 +373,7 @@ abstract class SettingsBase {
 	}
 
 	/**
-	 * Is this a tab.
+	 * Is this a tab?
 	 *
 	 * @return bool
 	 */
@@ -308,7 +395,7 @@ abstract class SettingsBase {
 	public function add_settings_link( $actions ): array {
 		$new_actions = [
 			'settings' =>
-				'<a href="' . admin_url( $this->parent_slug() . '?page=' . $this->option_page() ) .
+				'<a href="' . admin_url( $this->parent_slug . '?page=' . $this->option_page() ) .
 				'" aria-label="' . esc_attr( $this->settings_link_label() ) . '">' .
 				esc_html( $this->settings_link_text() ) . '</a>',
 		];
@@ -322,14 +409,14 @@ abstract class SettingsBase {
 	 * Store all settings in a single database entry
 	 * and make sure the $settings array is either the default
 	 * or the settings stored in the database.
+	 *
+	 * @return void
 	 */
-	protected function init_settings() {
-		$network_wide = get_site_option( $this->option_name() . self::NETWORK_WIDE, [] );
-
-		if ( empty( $network_wide ) ) {
-			$this->settings = get_option( $this->option_name(), null );
-		} else {
+	protected function init_settings(): void {
+		if ( $this->is_network_wide() ) {
 			$this->settings = get_site_option( $this->option_name(), null );
+		} else {
+			$this->settings = get_option( $this->option_name(), null );
 		}
 
 		$settings_exist                       = is_array( $this->settings );
@@ -337,7 +424,7 @@ abstract class SettingsBase {
 		$form_fields                          = $this->form_fields();
 		$network_wide_setting                 = array_key_exists( self::NETWORK_WIDE, $this->settings ) ?
 			$this->settings[ self::NETWORK_WIDE ] :
-			$network_wide;
+			$this->get_network_wide();
 		$this->settings[ self::NETWORK_WIDE ] = $network_wide_setting;
 
 		if ( $settings_exist ) {
@@ -400,7 +487,7 @@ abstract class SettingsBase {
 	 * @return void
 	 * @noinspection PhpUnusedParameterInspection
 	 */
-	protected function set_defaults( array &$field, string $id ) {
+	protected function set_defaults( array &$field, string $id ): void {
 		$field = wp_parse_args(
 			$field,
 			[
@@ -420,33 +507,57 @@ abstract class SettingsBase {
 	 * @return void
 	 * @noinspection UnusedFunctionResultInspection
 	 */
-	public function add_settings_page() {
-		if ( $this->is_main_menu_page() ) {
-			add_menu_page(
-				$this->page_title(),
+	public function add_settings_page(): void {
+		if ( $this->parent_slug ) {
+			add_submenu_page(
+				$this->parent_slug,
+				$this->get_active_tab()->page_title(),
 				$this->menu_title(),
 				'manage_options',
 				$this->option_page(),
 				[ $this, 'settings_base_page' ]
 			);
+		} elseif ( $this->is_main_menu_page() ) {
+			$this->position += 1e-6;
 
-			return;
+			add_menu_page(
+				$this->page_title(),
+				$this->menu_title(),
+				'manage_options',
+				$this->option_page(),
+				[ $this, 'settings_base_page' ],
+				$this->icon_url(),
+				$this->position
+			);
+
+			add_submenu_page(
+				$this->option_page(),
+				$this->page_title(),
+				$this->page_title(),
+				'manage_options',
+				$this->option_page(),
+				[ $this, 'settings_base_page' ]
+			);
+
+			foreach ( $this->tabs as $tab ) {
+				add_submenu_page(
+					$this->option_page(),
+					$tab->page_title(),
+					$tab->page_title(),
+					'manage_options',
+					$tab->option_page(),
+					[ $tab, 'settings_base_page' ]
+				);
+			}
 		}
-
-		add_submenu_page(
-			$this->parent_slug(),
-			$this->get_active_tab()->page_title(),
-			$this->menu_title(),
-			'manage_options',
-			$this->option_page(),
-			[ $this, 'settings_base_page' ]
-		);
 	}
 
 	/**
 	 * Invoke relevant settings_page() basing on tabs.
+	 *
+	 * @return void
 	 */
-	public function settings_base_page() {
+	public function settings_base_page(): void {
 		echo '<div class="wrap">';
 
 		$this->get_active_tab()->settings_page();
@@ -456,8 +567,10 @@ abstract class SettingsBase {
 
 	/**
 	 * Enqueue scripts in admin.
+	 *
+	 * @return void
 	 */
-	public function admin_enqueue_scripts() {
+	public function admin_enqueue_scripts(): void {
 	}
 
 	/**
@@ -466,19 +579,72 @@ abstract class SettingsBase {
 	 *
 	 * @return void
 	 */
-	public function base_admin_enqueue_scripts() {
+	public function base_admin_enqueue_scripts(): void {
+		wp_enqueue_style(
+			static::PREFIX . '-settings-admin',
+			$this->plugin_url() . "/assets/css/settings-admin$this->min_suffix.css",
+			[],
+			$this->plugin_version()
+		);
+
 		if ( ! $this->is_options_screen() ) {
 			return;
 		}
 
-		$this->get_active_tab()->admin_enqueue_scripts();
+		wp_enqueue_script(
+			static::PREFIX . '-' . self::HANDLE,
+			$this->plugin_url() . "/assets/js/settings-base$this->min_suffix.js",
+			[],
+			$this->plugin_version(),
+			true
+		);
 
 		wp_enqueue_style(
 			static::PREFIX . '-' . self::HANDLE,
-			$this->plugin_url() . "/assets/css/settings-base$this->min_prefix.css",
+			$this->plugin_url() . "/assets/css/settings-base$this->min_suffix.css",
 			[],
 			$this->plugin_version()
 		);
+
+		$this->get_active_tab()->admin_enqueue_scripts();
+	}
+
+	/**
+	 * Filter denied access to the settings page.
+	 * It is needed when switching network_wide option.
+	 *
+	 * @return void
+	 */
+	public function base_admin_page_access_denied(): void {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : '';
+
+		if ( static::PREFIX !== $page ) {
+			return;
+		}
+
+		$url = is_multisite() && $this->is_network_wide() ?
+			network_admin_url( 'admin.php?page=' . $this->option_page() ) :
+			admin_url( 'admin.php?page=' . $this->option_page() );
+
+		if ( wp_get_raw_referer() === $url ) {
+			// Prevent infinite loop.
+			return;
+		}
+
+		wp_safe_redirect( $url );
+		$this->exit();
+	}
+
+	/**
+	 * Exit wrapper for test purposes.
+	 *
+	 * @return void
+	 */
+	protected function exit(): void {
+		// @codeCoverageIgnoreStart
+		exit();
+		// @codeCoverageIgnoreEnd
 	}
 
 	/**
@@ -486,7 +652,7 @@ abstract class SettingsBase {
 	 *
 	 * @return void
 	 */
-	public function setup_sections() {
+	public function setup_sections(): void {
 		if ( ! $this->is_options_screen() ) {
 			return;
 		}
@@ -519,12 +685,16 @@ abstract class SettingsBase {
 	 *
 	 * @return void
 	 */
-	public function setup_tabs_section() {
-		if ( ! $this->is_options_screen() ) {
+	public function setup_tabs_section(): void {
+		if ( ! $this->is_main_menu_page() ) {
 			return;
 		}
 
 		$tab = $this->get_active_tab();
+
+		if ( ! $this->is_options_screen( [ 'options', $tab->option_page() ] ) ) {
+			return;
+		}
 
 		add_settings_section(
 			'tabs_section',
@@ -537,34 +707,69 @@ abstract class SettingsBase {
 	/**
 	 * Show tabs.
 	 */
-	public function tabs_callback() {
+	public function tabs_callback(): void {
+		if ( ! count( $this->tabs ?? [] ) ) {
+			return;
+		}
+
 		?>
 		<div class="<?php echo esc_attr( static::PREFIX . '-settings-tabs' ); ?>">
+			<span class="<?php echo esc_attr( static::PREFIX . '-settings-links' ); ?>">
 			<?php
+
 			$this->tab_link( $this );
 
 			foreach ( $this->tabs as $tab ) {
 				$this->tab_link( $tab );
 			}
+
+			?>
+			</span>
+			<?php
+
+			/**
+			 * Fires before settings tab closing tag.
+			 */
+			do_action( 'kagg_settings_tab' );
+
 			?>
 		</div>
 		<?php
 	}
 
 	/**
+	 * Get tab url.
+	 *
+	 * @param SettingsBase $tab Tabs of the current settings page.
+	 *
+	 * @return string
+	 */
+	public function tab_url( SettingsBase $tab ): string {
+		$url = is_multisite() && $this->is_network_wide() ?
+			network_admin_url( 'admin.php?page=' . $tab->option_page() ) :
+			menu_page_url( $tab->option_page(), false );
+
+		if ( self::MODE_TABS === $this->admin_mode ) {
+			$url = add_query_arg( 'tab', strtolower( $tab->tab_name() ), $url );
+		}
+
+		return $url;
+	}
+
+	/**
 	 * Show a tab link.
 	 *
 	 * @param SettingsBase $tab Tabs of the current settings page.
+	 *
+	 * @return void
 	 */
-	private function tab_link( SettingsBase $tab ) {
-		$url    = menu_page_url( $this->option_page(), false );
-		$url    = add_query_arg( 'tab', strtolower( $tab->get_class_name() ), $url );
-		$active = $this->is_tab_active( $tab ) ? ' active' : '';
+	private function tab_link( SettingsBase $tab ): void {
+		$url    = $this->tab_url( $tab );
+		$active = $tab->is_tab_active( $tab ) ? ' active' : '';
+		$class  = static::PREFIX . '-settings-tab' . $active;
 
 		?>
-		<a
-				class="<?php echo esc_attr( static::PREFIX . '-settings-tab' ); ?><?php echo esc_attr( $active ); ?>"
-				href="<?php echo esc_url( $url ); ?>">
+		<a class="<?php echo esc_attr( $class ); ?>" href="<?php echo esc_url( $url ); ?>">
 			<?php echo esc_html( $tab->page_title() ); ?>
 		</a>
 		<?php
@@ -578,23 +783,37 @@ abstract class SettingsBase {
 	 * @return bool
 	 */
 	protected function is_tab_active( SettingsBase $tab ): bool {
-		$current_page_name = filter_input( INPUT_GET, 'page', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
-		$current_tab_name  = filter_input( INPUT_GET, 'tab', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
+		switch ( $this->admin_mode ) {
+			case self::MODE_PAGES:
+				$current_page_name = filter_input( INPUT_GET, 'page', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
 
-		if ( null === $current_page_name || null === $current_tab_name ) {
-			$names             = $this->get_names_from_referer();
-			$current_page_name = $names['page'];
-			$current_tab_name  = $names['tab'];
+				if ( null === $current_page_name ) {
+					$names             = $this->get_names_from_referer();
+					$current_page_name = $names['page'];
+				}
+
+				return $tab->option_page() === $current_page_name;
+			case self::MODE_TABS:
+				$current_page_name = filter_input( INPUT_GET, 'page', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
+				$current_tab_name  = filter_input( INPUT_GET, 'tab', FILTER_SANITIZE_FULL_SPECIAL_CHARS );
+
+				if ( null === $current_page_name || null === $current_tab_name ) {
+					$names             = $this->get_names_from_referer();
+					$current_page_name = $names['page'];
+					$current_tab_name  = $names['tab'];
+				}
+
+				if (
+					( $current_page_name !== $this->option_page() || null === $current_tab_name ) &&
+					! $tab->is_tab()
+				) {
+					return true;
+				}
+
+				return strtolower( $tab->tab_name() ) === $current_tab_name;
+			default:
+				return false;
 		}
-
-		if (
-			( $current_page_name !== $this->option_page() || null === $current_tab_name ) &&
-			! $tab->is_tab()
-		) {
-			return true;
-		}
-
-		return strtolower( $tab->get_class_name() ) === $current_tab_name;
 	}
 
 	/**
@@ -650,7 +869,7 @@ abstract class SettingsBase {
 	 *
 	 * @return SettingsBase
 	 */
-	protected function get_active_tab(): SettingsBase {
+	public function get_active_tab(): SettingsBase {
 		if ( ! empty( $this->tabs ) ) {
 			foreach ( $this->tabs as $tab ) {
 				if ( $this->is_tab_active( $tab ) ) {
@@ -667,7 +886,7 @@ abstract class SettingsBase {
 	 *
 	 * @return void
 	 */
-	public function setup_fields() {
+	public function setup_fields(): void {
 		if ( ! $this->is_options_screen() ) {
 			return;
 		}
@@ -699,8 +918,10 @@ abstract class SettingsBase {
 	 * Print text/password field.
 	 *
 	 * @param array $arguments Field arguments.
+	 *
+	 * @return void
 	 */
-	protected function print_text_field( array $arguments ) {
+	protected function print_text_field( array $arguments ): void {
 		$value        = $this->get( $arguments['field_id'] );
 		$autocomplete = '';
 		$lp_ignore    = '';
@@ -731,8 +952,10 @@ abstract class SettingsBase {
 	 * Print number field.
 	 *
 	 * @param array $arguments Field arguments.
+	 *
+	 * @return void
 	 */
-	protected function print_number_field( array $arguments ) {
+	protected function print_number_field( array $arguments ): void {
 		$value = $this->get( $arguments['field_id'] );
 		$min   = $arguments['min'];
 		$max   = $arguments['max'];
@@ -758,9 +981,10 @@ abstract class SettingsBase {
 	 *
 	 * @param array $arguments Field arguments.
 	 *
+	 * @return void
 	 * @noinspection HtmlUnknownAttribute
 	 */
-	protected function print_textarea_field( array $arguments ) {
+	protected function print_textarea_field( array $arguments ): void {
 		$value = $this->get( $arguments['field_id'] );
 
 		printf(
@@ -778,10 +1002,11 @@ abstract class SettingsBase {
 	 *
 	 * @param array $arguments Field arguments.
 	 *
+	 * @return void
 	 * @noinspection HtmlUnknownAttribute
 	 * @noinspection HtmlWrongAttributeValue
 	 */
-	protected function print_checkbox_field( array $arguments ) {
+	protected function print_checkbox_field( array $arguments ): void {
 		$value = (array) $this->get( $arguments['field_id'] );
 
 		if ( empty( $arguments['options'] ) || ! is_array( $arguments['options'] ) ) {
@@ -800,7 +1025,7 @@ abstract class SettingsBase {
 			$options_markup .= sprintf(
 				'<label for="%2$s_%7$s">' .
 				'<input id="%2$s_%7$s" name="%1$s[%2$s][]" type="%3$s" value="%4$s" %5$s %8$s />' .
-				' %6$s' .
+				'%6$s' .
 				'</label>' .
 				'<br/>',
 				esc_html( $this->option_name() ),
@@ -844,10 +1069,11 @@ abstract class SettingsBase {
 	 *
 	 * @param array $arguments Field arguments.
 	 *
+	 * @return void
 	 * @noinspection HtmlUnknownAttribute
 	 * @noinspection HtmlWrongAttributeValue
 	 */
-	protected function print_radio_field( array $arguments ) {
+	protected function print_radio_field( array $arguments ): void {
 		$value = $this->get( $arguments['field_id'] );
 
 		if ( empty( $arguments['options'] ) || ! is_array( $arguments['options'] ) ) {
@@ -866,7 +1092,7 @@ abstract class SettingsBase {
 			$options_markup .= sprintf(
 				'<label for="%2$s_%7$s">' .
 				'<input id="%2$s_%7$s" name="%1$s[%2$s]" type="%3$s" value="%4$s" %5$s %8$s />' .
-				' %6$s' .
+				'%6$s' .
 				'</label>' .
 				'<br/>',
 				esc_html( $this->option_name() ),
@@ -910,9 +1136,10 @@ abstract class SettingsBase {
 	 *
 	 * @param array $arguments Field arguments.
 	 *
+	 * @return void
 	 * @noinspection HtmlUnknownAttribute
 	 */
-	protected function print_select_field( array $arguments ) {
+	protected function print_select_field( array $arguments ): void {
 		$value = $this->get( $arguments['field_id'] );
 
 		if ( empty( $arguments['options'] ) || ! is_array( $arguments['options'] ) ) {
@@ -960,9 +1187,10 @@ abstract class SettingsBase {
 	 *
 	 * @param array $arguments Field arguments.
 	 *
+	 * @return void
 	 * @noinspection HtmlUnknownAttribute
 	 */
-	protected function print_multiple_select_field( array $arguments ) {
+	protected function print_multiple_select_field( array $arguments ): void {
 		$value = $this->get( $arguments['field_id'] );
 
 		if ( empty( $arguments['options'] ) || ! is_array( $arguments['options'] ) ) {
@@ -1012,13 +1240,37 @@ abstract class SettingsBase {
 	}
 
 	/**
+	 * Print file field.
+	 *
+	 * @param array $arguments Field arguments.
+	 *
+	 * @return void
+	 * @noinspection HtmlUnknownAttribute
+	 */
+	protected function print_file_field( array $arguments ): void {
+		$multiple = (bool) ( $arguments['multiple'] ?? '' );
+		$accept   = $arguments['accept'] ?? '';
+
+		printf(
+			'<input %1$s name="%2$s[%3$s]%4$s" id="%3$s" type="file" %5$s %6$s/>',
+			disabled( $arguments['disabled'], true, false ),
+			esc_html( $this->option_name() ),
+			esc_attr( $arguments['field_id'] ),
+			esc_attr( $multiple ? '[]' : '' ),
+			esc_attr( $multiple ? 'multiple' : '' ),
+			$accept ? 'accept="' . esc_attr( $accept ) . '"' : ''
+		);
+	}
+
+	/**
 	 * Print table field.
 	 *
 	 * @param array $arguments Field arguments.
 	 *
+	 * @return void
 	 * @noinspection HtmlUnknownAttribute
 	 */
-	protected function print_table_field( array $arguments ) {
+	protected function print_table_field( array $arguments ): void {
 		$value = $this->get( $arguments['field_id'] );
 
 		if ( ! is_array( $value ) ) {
@@ -1065,9 +1317,10 @@ abstract class SettingsBase {
 	 *
 	 * @param array $arguments Field arguments.
 	 *
+	 * @return void
 	 * @noinspection HtmlUnknownAttribute
 	 */
-	protected function print_button_field( array $arguments ) {
+	protected function print_button_field( array $arguments ): void {
 		$disabled = $arguments['disabled'] ?? '';
 		$field_id = $arguments['field_id'] ?? '';
 		$text     = $arguments['text'] ?? '';
@@ -1084,8 +1337,10 @@ abstract class SettingsBase {
 	 * Output settings field.
 	 *
 	 * @param array $arguments Field arguments.
+	 *
+	 * @return void
 	 */
-	public function field_callback( array $arguments ) {
+	public function field_callback( array $arguments ): void {
 		if ( empty( $arguments['field_id'] ) ) {
 			return;
 		}
@@ -1204,8 +1459,10 @@ abstract class SettingsBase {
 	 *
 	 * @param string $key   Setting name.
 	 * @param mixed  $value Setting value.
+	 *
+	 * @return void
 	 */
-	public function update_option( string $key, $value ) {
+	public function update_option( string $key, $value ): void {
 		if ( empty( $this->settings ) ) {
 			$this->init_settings();
 		}
@@ -1231,6 +1488,11 @@ abstract class SettingsBase {
 		$old_value = is_array( $old_value ) ? $old_value : [];
 
 		foreach ( $this->form_fields() as $key => $form_field ) {
+			if ( 'file' === $form_field['type'] ) {
+				unset( $value[ $key ], $old_value[ $key ] );
+				continue;
+			}
+
 			if ( 'checkbox' !== $form_field['type'] || isset( $value[ $key ] ) ) {
 				continue;
 			}
@@ -1260,7 +1522,7 @@ abstract class SettingsBase {
 	 *
 	 * @return void
 	 */
-	public function load_plugin_textdomain() {
+	public function load_plugin_textdomain(): void {
 		load_plugin_textdomain(
 			$this->text_domain(),
 			false,
@@ -1271,9 +1533,13 @@ abstract class SettingsBase {
 	/**
 	 * Is current admin screen the plugin options screen.
 	 *
+	 * @param string|array $ids Additional screen id or ids to check.
+	 *
 	 * @return bool
 	 */
-	protected function is_options_screen(): bool {
+	protected function is_options_screen( $ids = 'options' ): bool {
+		$ids = (array) $ids;
+
 		if ( ! function_exists( 'get_current_screen' ) ) {
 			return false;
 		}
@@ -1284,13 +1550,13 @@ abstract class SettingsBase {
 			return false;
 		}
 
-		$screen_id = $this->screen_id();
+		$current_suffix = preg_replace( '/.+_page_/', '', $current_screen->id );
 
-		if ( $this->is_main_menu_page() ) {
-			$screen_id = str_replace( 'settings_page', 'toplevel_page', $screen_id );
+		if ( is_multisite() && $this->is_network_wide() ) {
+			$current_suffix = preg_replace( '/-network$/', '', $current_suffix );
 		}
 
-		return 'options' === $current_screen->id || $screen_id === $current_screen->id;
+		return $this->option_page() === $current_suffix || in_array( $current_suffix, $ids, true );
 	}
 
 	/**
@@ -1300,7 +1566,7 @@ abstract class SettingsBase {
 	 *
 	 * @return void
 	 */
-	protected function print_helper( string $helper ) {
+	protected function print_helper( string $helper ): void {
 		if ( ! $helper ) {
 			return;
 		}
@@ -1312,13 +1578,13 @@ abstract class SettingsBase {
 	}
 
 	/**
-	 * Print supplemental id it exists.
+	 * Print supplemental id if it exists.
 	 *
 	 * @param string $supplemental Supplemental.
 	 *
 	 * @return void
 	 */
-	protected function print_supplemental( string $supplemental ) {
+	protected function print_supplemental( string $supplemental ): void {
 		if ( ! $supplemental ) {
 			return;
 		}
@@ -1326,6 +1592,80 @@ abstract class SettingsBase {
 		printf(
 			'<p class="description">%s</p>',
 			wp_kses_post( $supplemental )
+		);
+	}
+
+	/**
+	 * Get network_wide setting.
+	 *
+	 * @return array
+	 */
+	protected function get_network_wide(): array {
+		static $network_wide = null;
+
+		if ( null === $network_wide ) {
+			$network_wide = (array) get_site_option( $this->option_name() . self::NETWORK_WIDE, [] );
+		}
+
+		return $network_wide;
+	}
+
+	/**
+	 * Whether network_wide setting is on.
+	 *
+	 * @return bool
+	 */
+	protected function is_network_wide(): bool {
+		return ! empty( $this->get_network_wide() );
+	}
+
+	/**
+	 * Get menu position.
+	 *
+	 * @return string
+	 */
+	protected function get_menu_position(): string {
+		return [ 'on' ] === $this->get( 'menu_position' ) ? self::MODE_TABS : self::MODE_PAGES;
+	}
+
+	/**
+	 * Print header.
+	 *
+	 * @return void
+	 */
+	protected function print_header(): void {
+		?>
+		<div class="<?php echo esc_attr( static::PREFIX . '-header-bar' ); ?>">
+			<div class="<?php echo esc_attr( static::PREFIX . '-header' ); ?>">
+				<h2>
+					<?php echo esc_html( $this->page_title() ); ?>
+				</h2>
+			</div>
+			<?php
+
+			/**
+			 * Fires before settings tab closing tag.
+			 */
+			do_action( 'kagg_settings_header' );
+
+			?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Get savable for fields.
+	 *
+	 * @return array
+	 */
+	protected function get_savable_form_fields(): array {
+		$not_savable_form_fields = [ 'button', 'file' ];
+
+		return array_filter(
+			$this->form_fields,
+			static function ( $field ) use ( $not_savable_form_fields ) {
+				return ! in_array( $field['type'] ?? '', $not_savable_form_fields, true );
+			}
 		);
 	}
 }

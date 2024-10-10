@@ -16,17 +16,17 @@ class EmailOptin {
 	/**
 	 * Script handle.
 	 */
-	const HANDLE = 'hcaptcha-divi-email-optin';
+	public const HANDLE = 'hcaptcha-divi-email-optin';
 
 	/**
 	 * Nonce action.
 	 */
-	const ACTION = 'hcaptcha_divi_email_optin';
+	public const ACTION = 'hcaptcha_divi_email_optin';
 
 	/**
 	 * Nonce name.
 	 */
-	const NONCE = 'hcaptcha_divi_email_optin_nonce';
+	public const NONCE = 'hcaptcha_divi_email_optin_nonce';
 
 	/**
 	 * Constructor.
@@ -37,12 +37,15 @@ class EmailOptin {
 
 	/**
 	 * Init hooks.
+	 *
+	 * @return void
 	 */
-	protected function init_hooks() {
+	protected function init_hooks(): void {
 		add_filter( 'et_pb_signup_form_field_html_submit_button', [ $this, 'add_captcha' ], 10, 2 );
 		add_action( 'wp_ajax_et_pb_submit_subscribe_form', [ $this, 'verify' ], 9 );
 		add_action( 'wp_ajax_nopriv_et_pb_submit_subscribe_form', [ $this, 'verify' ], 9 );
 		add_action( 'wp_print_footer_scripts', [ $this, 'enqueue_scripts' ], 9 );
+		add_filter( 'script_loader_tag', [ $this, 'add_type_module' ], 10, 3 );
 	}
 
 	/**
@@ -78,7 +81,7 @@ class EmailOptin {
 	 * @return void
 	 * @noinspection PhpUndefinedFunctionInspection
 	 */
-	public function verify() {
+	public function verify(): void {
 		$error_message = hcaptcha_get_verify_message_html(
 			self::NONCE,
 			self::ACTION
@@ -96,7 +99,7 @@ class EmailOptin {
 	 *
 	 * @return void
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts(): void {
 		if ( ! hcaptcha()->form_shown ) {
 			return;
 		}
@@ -110,5 +113,25 @@ class EmailOptin {
 			HCAPTCHA_VERSION,
 			true
 		);
+	}
+
+	/**
+	 * Add type="module" attribute to script tag.
+	 *
+	 * @param string|mixed $tag    Script tag.
+	 * @param string       $handle Script handle.
+	 * @param string       $src    Script source.
+	 *
+	 * @return string
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function add_type_module( $tag, string $handle, string $src ): string {
+		$tag = (string) $tag;
+
+		if ( self::HANDLE !== $handle ) {
+			return $tag;
+		}
+
+		return HCaptcha::add_type_module( $tag );
 	}
 }

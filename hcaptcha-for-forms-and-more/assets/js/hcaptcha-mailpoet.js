@@ -3,7 +3,7 @@
 ( function( $ ) {
 	// noinspection JSCheckFunctionSignatures
 	$.ajaxPrefilter( function( options ) {
-		const data = options.data;
+		const data = options.data ?? '';
 		let nonceName = '';
 
 		if ( data.startsWith( 'action=mailpoet' ) ) {
@@ -14,9 +14,10 @@
 			return;
 		}
 
-		const urlParams = new URLSearchParams( data );
-		const formId = urlParams.get( 'data[form_id]' );
-		const $form = $( 'input[name="data[form_id]"][value=' + formId + ']' ).parent( 'form' );
+		// eslint-disable-next-line @wordpress/no-global-active-element
+		const eventTarget = options.context || document.activeElement;
+		const $form = $( eventTarget.closest( 'form' ) );
+
 		let response = $form.find( '[name="h-captcha-response"]' ).val();
 		response = response ? response : '';
 		let id = $form.find( '[name="hcaptcha-widget-id"]' ).val();

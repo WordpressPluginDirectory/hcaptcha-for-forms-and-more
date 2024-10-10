@@ -7,6 +7,7 @@
 
 namespace HCaptcha\Wordfence;
 
+use HCaptcha\Helpers\HCaptcha;
 use HCaptcha\WP\Login;
 
 /**
@@ -23,8 +24,10 @@ class General {
 
 	/**
 	 * Init hooks.
+	 *
+	 * @return void
 	 */
-	protected function init_hooks() {
+	protected function init_hooks(): void {
 		if ( hcaptcha()->settings()->is( 'wordfence_status', 'login' ) ) {
 			// Disable recaptcha compatibility, otherwise a Wordfence login script fails and cannot show 2FA.
 			hcaptcha()->settings()->set( 'recaptcha_compat_off', [ 'on' ] );
@@ -34,6 +37,8 @@ class General {
 		} else {
 			add_action( 'plugins_loaded', [ $this, 'remove_wp_login_hcaptcha_hooks' ] );
 		}
+
+		add_action( 'login_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -41,7 +46,7 @@ class General {
 	 *
 	 * @return void
 	 */
-	public function remove_wordfence_recaptcha_script() {
+	public function remove_wordfence_recaptcha_script(): void {
 		wp_dequeue_script( 'wordfence-ls-recaptcha' );
 		wp_deregister_script( 'wordfence-ls-recaptcha' );
 	}
@@ -61,7 +66,7 @@ class General {
 	 *
 	 * @return void
 	 */
-	public function remove_wp_login_hcaptcha_hooks() {
+	public function remove_wp_login_hcaptcha_hooks(): void {
 		$wp_login = hcaptcha()->get( Login::class );
 
 		if ( ! $wp_login ) {
@@ -69,6 +74,22 @@ class General {
 		}
 
 		remove_action( 'login_form', [ $wp_login, 'add_captcha' ] );
-		remove_filter( 'wp_authenticate_user', [ $wp_login, 'verify' ] );
+		remove_filter( 'wp_authenticate_user', [ $wp_login, 'check_signature' ], PHP_INT_MAX );
+	}
+
+	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 */
+	public function print_inline_styles(): void {
+		$css = <<<CSS
+#loginform[style="position: relative;"] > .h-captcha {
+    visibility: hidden !important;
+}
+CSS;
+
+		HCaptcha::css_display( $css );
 	}
 }

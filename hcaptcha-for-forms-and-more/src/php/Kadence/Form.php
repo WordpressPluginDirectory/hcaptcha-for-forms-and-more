@@ -28,7 +28,7 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public function init_hooks() {
+	public function init_hooks(): void {
 		add_action( 'wp_ajax_kb_process_ajax_submit', [ $this, 'process_ajax' ], 9 );
 		add_action( 'wp_ajax_nopriv_kb_process_ajax_submit', [ $this, 'process_ajax' ], 9 );
 
@@ -55,13 +55,6 @@ class Form {
 			return $block_content;
 		}
 
-		$args = [
-			'id' => [
-				'source'  => HCaptcha::get_class_source( __CLASS__ ),
-				'form_id' => isset( $block['attrs']['postID'] ) ? (int) $block['attrs']['postID'] : 0,
-			],
-		];
-
 		$pattern       = '/(<div class="kadence-blocks-form-field google-recaptcha-checkout-wrap">).+?(<\/div>)/';
 		$block_content = (string) $block_content;
 
@@ -74,6 +67,13 @@ class Form {
 			// Do not replace reCaptcha V3.
 			return $block_content;
 		}
+
+		$args = [
+			'id' => [
+				'source'  => HCaptcha::get_class_source( __CLASS__ ),
+				'form_id' => isset( $block['attrs']['postID'] ) ? (int) $block['attrs']['postID'] : 0,
+			],
+		];
 
 		$search = '<div class="kadence-blocks-form-field kb-submit-field';
 
@@ -89,13 +89,12 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public function process_ajax() {
+	public function process_ajax(): void {
 		if ( $this->has_recaptcha() ) {
 			return;
 		}
 
 		// Nonce is checked by Kadence.
-
 		// phpcs:disable WordPress.Security.NonceVerification.Missing
 		$hcaptcha_response = isset( $_POST['h-captcha-response'] ) ?
 			filter_var( wp_unslash( $_POST['h-captcha-response'] ), FILTER_SANITIZE_FULL_SPECIAL_CHARS ) :
@@ -125,7 +124,7 @@ class Form {
 	 *
 	 * @return void
 	 */
-	public static function enqueue_scripts() {
+	public static function enqueue_scripts(): void {
 		$min = hcap_min_suffix();
 
 		wp_enqueue_script(
@@ -142,7 +141,7 @@ class Form {
 	 *
 	 * @return bool
 	 */
-	private function has_recaptcha(): bool {
+	protected function has_recaptcha(): bool {
 		// Nonce is checked by Kadence.
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing

@@ -19,12 +19,13 @@ class Subscribe extends Base {
 	 *
 	 * @return void
 	 */
-	protected function init_hooks() {
+	protected function init_hooks(): void {
 		parent::init_hooks();
 
 		add_action( 'wpdiscuz_after_subscription_form', [ $this, 'add_hcaptcha' ], 10, 3 );
 		add_action( 'wp_ajax_wpdAddSubscription', [ $this, 'verify' ], 9 );
 		add_action( 'wp_ajax_nopriv_wpdAddSubscription', [ $this, 'verify' ], 9 );
+		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -32,7 +33,7 @@ class Subscribe extends Base {
 	 *
 	 * @return void
 	 */
-	public function add_hcaptcha() {
+	public function add_hcaptcha(): void {
 		global $post;
 
 		$args = [
@@ -50,7 +51,7 @@ class Subscribe extends Base {
 	 *
 	 * @return void
 	 */
-	public function verify() {
+	public function verify(): void {
 		// Nonce is checked by wpDiscuz.
 
 		// phpcs:disable WordPress.Security.NonceVerification.Missing
@@ -68,5 +69,22 @@ class Subscribe extends Base {
 		}
 
 		wp_send_json_error( $result );
+	}
+
+	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 */
+	public function print_inline_styles(): void {
+		$css = <<<CSS
+	#wpdiscuz-subscribe-form .h-captcha {
+		margin-top: 5px;
+		margin-left: auto;
+	}
+CSS;
+
+		HCaptcha::css_display( $css );
 	}
 }

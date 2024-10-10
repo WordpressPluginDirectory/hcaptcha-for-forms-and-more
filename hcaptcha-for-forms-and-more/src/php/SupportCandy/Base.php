@@ -33,13 +33,14 @@ abstract class Base {
 	 *
 	 * @return void
 	 */
-	private function init_hooks() {
+	private function init_hooks(): void {
 		add_action( static::ADD_CAPTCHA_HOOK, [ $this, 'add_captcha' ] );
 		add_action( 'wp_ajax_' . static::VERIFY_HOOK, [ $this, 'verify' ], 9 );
 		add_action( 'wp_ajax_nopriv_' . static::VERIFY_HOOK, [ $this, 'verify' ], 9 );
 		add_filter( 'do_shortcode_tag', [ $this, 'support_candy_shortcode_tag' ], 10, 4 );
 		add_action( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ] );
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
+		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -47,7 +48,7 @@ abstract class Base {
 	 *
 	 * @return void
 	 */
-	public function add_captcha() {
+	public function add_captcha(): void {
 		$args = [
 			'action' => static::ACTION,
 			'name'   => static::NAME,
@@ -65,7 +66,7 @@ abstract class Base {
 	 *
 	 * @return void
 	 */
-	public function verify() {
+	public function verify(): void {
 		$error_message = hcaptcha_get_verify_message(
 			static::NAME,
 			static::ACTION
@@ -111,7 +112,7 @@ abstract class Base {
 	 *
 	 * @return void
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts(): void {
 		$min = hcap_min_suffix();
 
 		wp_enqueue_script(
@@ -121,5 +122,29 @@ abstract class Base {
 			HCAPTCHA_VERSION,
 			true
 		);
+	}
+
+	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 */
+	public function print_inline_styles(): void {
+		static $style_shown;
+
+		if ( $style_shown ) {
+			return;
+		}
+
+		$style_shown = true;
+
+		$css = <<<CSS
+	form.wpsc-create-ticket .h-captcha {
+		margin: 0 15px 15px 15px;
+	}
+CSS;
+
+		HCaptcha::css_display( $css );
 	}
 }

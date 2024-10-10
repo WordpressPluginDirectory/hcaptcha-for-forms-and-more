@@ -18,26 +18,36 @@ use WPCF7_Validation;
 /**
  * Class CF7.
  */
-class CF7 {
-	const HANDLE    = 'hcaptcha-cf7';
-	const SHORTCODE = 'cf7-hcaptcha';
-	const DATA_NAME = 'hcap-cf7';
+class CF7 extends Base {
+	/**
+	 * Script handle.
+	 */
+	public const HANDLE = 'hcaptcha-cf7';
 
 	/**
-	 * CF7 constructor.
+	 * CF7 shortcode.
 	 */
-	public function __construct() {
-		$this->init_hooks();
-	}
+	private const SHORTCODE = 'cf7-hcaptcha';
+
+	/**
+	 * Data name.
+	 */
+	private const DATA_NAME = 'hcap-cf7';
 
 	/**
 	 * Init hooks.
+	 *
+	 * @return void
 	 */
-	public function init_hooks() {
+	public function init_hooks(): void {
+		parent::init_hooks();
+
 		add_filter( 'do_shortcode_tag', [ $this, 'wpcf7_shortcode' ], 20, 4 );
 		add_shortcode( self::SHORTCODE, [ $this, 'cf7_hcaptcha_shortcode' ] );
+		add_filter( 'rest_authentication_errors', [ $this, 'check_rest_nonce' ] );
 		add_filter( 'wpcf7_validate', [ $this, 'verify_hcaptcha' ], 20, 2 );
 		add_action( 'wp_print_footer_scripts', [ $this, 'enqueue_scripts' ], 9 );
+		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -48,31 +58,47 @@ class CF7 {
 	 * @param array|string $attr   Shortcode attributes array or empty string.
 	 * @param array        $m      Regular expression match array.
 	 *
-	 * @return string|mixed
+	 * @return string
 	 * @noinspection PhpUnusedParameterInspection
 	 */
-	public function wpcf7_shortcode( $output, string $tag, $attr, array $m ) {
+	public function wpcf7_shortcode( $output, string $tag, $attr, array $m ): string {
+		$output = (string) $output;
+
 		if ( 'contact-form-7' !== $tag ) {
 			return $output;
 		}
 
-		remove_filter( 'do_shortcode_tag', [ $this, 'wpcf7_shortcode' ], 20 );
+		if ( $this->has_stripe_element( $output ) ) {
+			/**
+			 * Do not show hCaptcha in the CF7 form having Stripe field.
+			 * Stripe payment form has its own hidden hCaptcha field.
+			 */
+			return preg_replace( '/\[cf7-hcaptcha.*?]/', '', $output );
+		}
 
-		$output  = (string) $output;
-		$form_id = isset( $attr['id'] ) ? (int) $attr['id'] : 0;
+		$form_id            = isset( $attr['id'] ) ? (int) $attr['id'] : 0;
+		$cf7_hcap_shortcode = $this->get_cf7_hcap_shortcode( $output );
 
-		if ( has_shortcode( $output, self::SHORTCODE ) ) {
-			$output = do_shortcode( $this->add_form_id_to_cf7_hcap_shortcode( $output, $form_id ) );
+		if ( $cf7_hcap_shortcode ) {
+			if ( $this->mode_embed ) {
+				remove_filter( 'do_shortcode_tag', [ $this, 'wpcf7_shortcode' ], 20 );
 
-			add_filter( 'do_shortcode_tag', [ $this, 'wpcf7_shortcode' ], 20, 4 );
+				$output = do_shortcode( $this->add_form_id_to_cf7_hcap_shortcode( $output, $form_id ) );
 
+				add_filter( 'do_shortcode_tag', [ $this, 'wpcf7_shortcode' ], 20, 4 );
+
+				return $output;
+			}
+
+			$output = str_replace( $cf7_hcap_shortcode, '', $output );
+		}
+
+		if ( ! $this->mode_auto ) {
 			return $output;
 		}
 
 		$cf7_hcap_form = do_shortcode( '[' . self::SHORTCODE . " form_id=\"$form_id\"]" );
 		$submit_button = '/(<(input|button) .*?type="submit")/';
-
-		add_filter( 'do_shortcode_tag', [ $this, 'wpcf7_shortcode' ], 20, 4 );
 
 		return preg_replace(
 			$submit_button,
@@ -90,81 +116,64 @@ class CF7 {
 	 * @noinspection PhpUnusedParameterInspection
 	 */
 	public function cf7_hcaptcha_shortcode( $attr = [] ): string {
-		$settings          = hcaptcha()->settings();
-		$hcaptcha_site_key = $settings->get_site_key();
-		$hcaptcha_theme    = $settings->get( 'theme' );
-		$hcaptcha_size     = $settings->get( 'size' );
-		$allowed_sizes     = [ 'normal', 'compact', 'invisible' ];
+		$attr = (array) $attr;
 
-		$args = wp_parse_args(
-			(array) $attr,
-			/**
-			 * CF7 works via REST API, where the current user is set to 0 (not logged in) if nonce is not present.
-			 * However, we can add standard nonce for the action 'wp_rest' and rest_cookie_check_errors() provides the check.
-			 */
-			[
-				'action'  => 'wp_rest', // Action name for wp_nonce_field.
-				'name'    => '_wpnonce', // Nonce name for wp_nonce_field.
-				'auto'    => false, // Whether a form has to be auto-verified.
-				'size'    => $hcaptcha_size, // The hCaptcha widget size.
-				'id'      => [
-					'source'  => HCaptcha::get_class_source( __CLASS__ ),
-					'form_id' => $attr['form_id'] ?? 0,
-				], // hCaptcha widget id.
-				/**
-				 * Example of id:
-				 * [
-				 *   'source' => ['gravityforms/gravityforms.php'],
-				 *   $form_id => 23
-				 * ]
-				 */
-				'protect' => true,
-			]
-		);
-
-		if ( $args['id'] ) {
-			$id            = (array) $args['id'];
-			$id['source']  = isset( $id['source'] ) ? (array) $id['source'] : [];
-			$id['form_id'] = $id['form_id'] ?? 0;
-
-			if (
-				! $args['protect'] ||
-				! apply_filters( 'hcap_protect_form', true, $id['source'], $id['form_id'] )
-			) {
-				// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
-				$encoded_id = base64_encode( wp_json_encode( $id ) );
-				$widget_id  = $encoded_id . '-' . wp_hash( $encoded_id );
-
-				ob_start();
-				?>
-				<input
-					type="hidden"
-					class="<?php echo esc_attr( HCaptcha::HCAPTCHA_WIDGET_ID ); ?>"
-					name="<?php echo esc_attr( HCaptcha::HCAPTCHA_WIDGET_ID ); ?>"
-					value="<?php echo esc_attr( $widget_id ); ?>">
-				<?php
-
-				return ob_get_clean();
+		foreach ( $attr as $key => $value ) {
+			if ( preg_match( '/(^id|^class):([\w-]+)/', $value, $m ) ) {
+				$attr[ 'cf7-' . $m[1] ] = $m[2];
+				unset( $attr[ $key ] );
 			}
 		}
 
-		$args['size'] = in_array( $args['size'], $allowed_sizes, true ) ? $args['size'] : $hcaptcha_size;
-		$callback     = 'invisible' === $args['size'] ? 'data-callback="hCaptchaSubmit"' : '';
+		$attr['action'] = 'wp_rest';
+		$attr['name']   = '_wpnonce';
+		$attr['id']     = [
+			'source'  => HCaptcha::get_class_source( __CLASS__ ),
+			'form_id' => (int) ( $attr['form_id'] ?? 0 ),
+		];
 
-		hcaptcha()->form_shown = true;
+		$hcap_form = hcap_shortcode( $attr );
+
+		$id        = $attr['cf7-id'] ?? uniqid( 'hcap_cf7-', true );
+		$class     = $attr['cf7-class'] ?? '';
+		$hcap_form = preg_replace(
+			[ '/(<h-captcha\s+?class="h-captcha")/', '#</h-captcha>#' ],
+			[ '<span id="' . esc_attr( $id ) . '" class="wpcf7-form-control h-captcha ' . esc_attr( $class ) . '"', '</span>' ],
+			$hcap_form
+		);
 
 		return (
 			'<span class="wpcf7-form-control-wrap" data-name="' . self::DATA_NAME . '">' .
-			'<span id="' . uniqid( 'hcap_cf7-', true ) . '"' .
-			' class="wpcf7-form-control h-captcha"' .
-			' data-sitekey="' . esc_attr( $hcaptcha_site_key ) . '"' .
-			' data-theme="' . esc_attr( $hcaptcha_theme ) . '"' .
-			' data-size="' . esc_attr( $args['size'] ) . '"' .
-			' ' . wp_kses_post( $callback ) . '>' .
-			'</span>' .
-			'</span>' .
-			wp_nonce_field( $args['action'], $args['name'], true, false )
+			$hcap_form .
+			'</span>'
 		);
+	}
+
+	/**
+	 * Check rest nonce and remove it for not logged-in users.
+	 *
+	 * @param WP_Error|mixed $result Error from another authentication handler,
+	 *                               null if we should handle it, or another value if not.
+	 *
+	 * @return WP_Error|mixed
+	 */
+	public function check_rest_nonce( $result ) {
+		if ( is_user_logged_in() ) {
+			return $result;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing
+		$form_id        = isset( $_POST['_wpcf7'] ) ? (int) $_POST['_wpcf7'] : 0;
+		$cf7_submit_uri = '/' . rest_get_url_prefix() . '/contact-form-7/v1/contact-forms/' . $form_id . '/feedback';
+		$uri            = isset( $_SERVER['REQUEST_URI'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ) : '';
+
+		if ( $cf7_submit_uri !== $uri ) {
+			return $result;
+		}
+
+		unset( $_REQUEST['_wpnonce'] );
+
+		return $result;
 	}
 
 	/**
@@ -183,6 +192,21 @@ class CF7 {
 			return $this->get_invalidated_result( $result );
 		}
 
+		if ( $this->has_field( $submission, 'stripe' ) ) {
+			/**
+			 * Do not verify CF7 form having Stripe field.
+			 * Stripe payment form has its own hidden hCaptcha field.
+			 */
+			return $result;
+		}
+
+		if (
+			! $this->mode_auto &&
+			! ( $this->mode_embed && $this->has_field( $submission, 'hcaptcha' ) )
+		) {
+			return $result;
+		}
+
 		$data           = $submission->get_posted_data();
 		$response       = $data['h-captcha-response'] ?? '';
 		$captcha_result = hcaptcha_request_verify( $response );
@@ -192,6 +216,26 @@ class CF7 {
 		}
 
 		return $result;
+	}
+
+	/**
+	 * Whether form has a field of given type.
+	 *
+	 * @param WPCF7_Submission $submission Submission.
+	 * @param string           $type       Field type.
+	 *
+	 * @return bool
+	 */
+	protected function has_field( WPCF7_Submission $submission, string $type ): bool {
+		$form_fields = $submission->get_contact_form()->scan_form_tags();
+
+		foreach ( $form_fields as $form_field ) {
+			if ( $type === $form_field->type ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -224,7 +268,7 @@ class CF7 {
 	 *
 	 * @return void
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts(): void {
 		if ( ! hcaptcha()->form_shown ) {
 			return;
 		}
@@ -241,6 +285,42 @@ class CF7 {
 	}
 
 	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 */
+	public function print_inline_styles(): void {
+		$css = <<<CSS
+	span[data-name="hcap-cf7"] .h-captcha {
+		margin-bottom: 0;
+	}
+
+	span[data-name="hcap-cf7"] ~ input[type="submit"],
+	span[data-name="hcap-cf7"] ~ button[type="submit"] {
+		margin-top: 2rem;
+	}
+CSS;
+
+		HCaptcha::css_display( $css );
+	}
+
+	/**
+	 * Get CF7 hCaptcha shortcode.
+	 *
+	 * @param string $output CF7 form output.
+	 *
+	 * @return string
+	 */
+	private function get_cf7_hcap_shortcode( string $output ): string {
+		$cf7_hcap_sc_regex = get_shortcode_regex( [ self::SHORTCODE ] );
+
+		return preg_match( "/$cf7_hcap_sc_regex/", $output, $matches )
+			? $matches[0]
+			: '';
+	}
+
+	/**
 	 * Add form_id to cf7_hcaptcha shortcode if it does not exist.
 	 * Replace to proper form_id if needed.
 	 *
@@ -249,17 +329,18 @@ class CF7 {
 	 *
 	 * @return string
 	 */
-	private function add_form_id_to_cf7_hcap_shortcode( string $output, int $form_id ): string {
-		$cf7_hcap_sc_regex = get_shortcode_regex( [ self::SHORTCODE ] );
+	protected function add_form_id_to_cf7_hcap_shortcode( string $output, int $form_id ): string {
+		$cf7_hcap_shortcode = $this->get_cf7_hcap_shortcode( $output );
 
-		// The preg_match should always be true, because $output has shortcode.
-		if ( ! preg_match( "/$cf7_hcap_sc_regex/", $output, $matches ) ) {
-			// @codeCoverageIgnoreStart
+		if ( ! $cf7_hcap_shortcode ) {
 			return $output;
-			// @codeCoverageIgnoreEnd
 		}
 
-		$cf7_hcap_sc = $matches[0];
+		$cf7_hcap_sc = preg_replace(
+			[ '/\s*\[|]\s*/', '/(id|class)\s*:\s*([\w-]+)/' ],
+			[ '', '$1=$2' ],
+			$cf7_hcap_shortcode
+		);
 		$atts        = shortcode_parse_atts( $cf7_hcap_sc );
 
 		unset( $atts[0] );
@@ -273,12 +354,18 @@ class CF7 {
 		array_walk(
 			$atts,
 			static function ( &$value, $key ) {
+				if ( in_array( $key, [ 'id', 'class' ], true ) ) {
+					$value = "$key:$value";
+
+					return;
+				}
+
 				$value = "$key=\"$value\"";
 			}
 		);
 
-		$updated_cf_hcap_sc = '[' . self::SHORTCODE . ' ' . implode( ' ', $atts ) . ']';
+		$updated_cf_hcap_sc = self::SHORTCODE . ' ' . implode( ' ', $atts );
 
-		return str_replace( $cf7_hcap_sc, $updated_cf_hcap_sc, $output );
+		return str_replace( $cf7_hcap_shortcode, "[$updated_cf_hcap_sc]", $output );
 	}
 }

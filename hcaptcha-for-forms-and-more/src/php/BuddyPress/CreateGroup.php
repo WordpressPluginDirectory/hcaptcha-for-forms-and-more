@@ -17,12 +17,12 @@ class CreateGroup {
 	/**
 	 * Nonce action.
 	 */
-	const ACTION = 'hcaptcha_bp_create_group';
+	private const ACTION = 'hcaptcha_bp_create_group';
 
 	/**
 	 * Nonce name.
 	 */
-	const NAME = 'hcaptcha_bp_create_group_nonce';
+	private const NAME = 'hcaptcha_bp_create_group_nonce';
 
 	/**
 	 * Create Group constructor.
@@ -36,9 +36,10 @@ class CreateGroup {
 	 *
 	 * @return void
 	 */
-	private function init_hooks() {
+	private function init_hooks(): void {
 		add_action( 'bp_after_group_details_creation_step', [ $this, 'add_captcha' ] );
 		add_action( 'groups_group_before_save', [ $this, 'verify' ] );
+		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
 
 	/**
@@ -46,7 +47,7 @@ class CreateGroup {
 	 *
 	 * @return void
 	 */
-	public function add_captcha() {
+	public function add_captcha(): void {
 		echo '<div class="hcap_buddypress_group_form">';
 
 		$args = [
@@ -62,7 +63,6 @@ class CreateGroup {
 
 		echo '</div>';
 	}
-
 
 	/**
 	 * Verify group form captcha.
@@ -83,12 +83,27 @@ class CreateGroup {
 		if ( null !== $error_message ) {
 			bp_core_add_message( $error_message, 'error' );
 			bp_core_redirect(
-				bp_get_root_domain() . '/' . bp_get_groups_root_slug() . '/create/step/group-details/'
+				bp_get_root_url() . '/' . bp_get_groups_root_slug() . '/create/step/group-details/'
 			);
 
 			return false;
 		}
 
 		return true;
+	}
+
+	/**
+	 * Print inline styles.
+	 *
+	 * @return void
+	 * @noinspection CssUnusedSymbol
+	 */
+	public function print_inline_styles(): void {
+		$css = <<<'CSS'
+	#buddypress .h-captcha {
+		margin-top: 15px;
+	}
+CSS;
+		HCaptcha::css_display( $css );
 	}
 }

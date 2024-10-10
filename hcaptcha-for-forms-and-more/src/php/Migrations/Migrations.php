@@ -7,6 +7,9 @@
 
 namespace HCaptcha\Migrations;
 
+use HCaptcha\Admin\Events\Events;
+use HCaptcha\Settings\PluginSettingsBase;
+
 /**
  * Migrations class.
  */
@@ -15,32 +18,46 @@ class Migrations {
 	/**
 	 * Migrated versions options name.
 	 */
-	const MIGRATED_VERSIONS_OPTION_NAME = 'hcaptcha_versions';
+	public const MIGRATED_VERSIONS_OPTION_NAME = 'hcaptcha_versions';
 
 	/**
 	 * Plugin version.
 	 */
-	const PLUGIN_VERSION = HCAPTCHA_VERSION;
+	private const PLUGIN_VERSION = HCAPTCHA_VERSION;
 
 	/**
 	 * Migration started status.
 	 */
-	const STARTED = - 1;
+	public const STARTED = - 1;
 
 	/**
 	 * Migration failed status.
 	 */
-	const FAILED = - 2;
+	public const FAILED = - 2;
+
+	/**
+	 * Priority of the plugins_loaded action to load Migrations.
+	 */
+	public const LOAD_PRIORITY = -PHP_INT_MAX;
 
 	/**
 	 * Plugin name.
 	 */
-	const PLUGIN_NAME = 'hCaptcha Plugin';
+	private const PLUGIN_NAME = 'hCaptcha Plugin';
 
 	/**
 	 * Migration constructor.
 	 */
 	public function __construct() {
+		$this->init();
+	}
+
+	/**
+	 * Init class.
+	 *
+	 * @return void
+	 */
+	public function init(): void {
 		if ( ! $this->is_allowed() ) {
 			return;
 		}
@@ -53,8 +70,8 @@ class Migrations {
 	 *
 	 * @return void
 	 */
-	private function init_hooks() {
-		add_action( 'plugins_loaded', [ $this, 'migrate' ], - PHP_INT_MAX );
+	private function init_hooks(): void {
+		add_action( 'plugins_loaded', [ $this, 'migrate' ], self::LOAD_PRIORITY );
 	}
 
 	/**
@@ -62,18 +79,22 @@ class Migrations {
 	 *
 	 * @return void
 	 */
-	public function migrate() {
-		$migrated = get_option( self::MIGRATED_VERSIONS_OPTION_NAME, [] );
+	public function migrate(): void {
+		$migrated = (array) get_option( self::MIGRATED_VERSIONS_OPTION_NAME, [] );
 
-		$migrations = array_filter(
+		$this->check_plugin_update( $migrated );
+
+		$migrations       = array_filter(
 			get_class_methods( $this ),
 			static function ( $migration ) {
 				return false !== strpos( $migration, 'migrate_' );
 			}
 		);
+		$upgrade_versions = [];
 
 		foreach ( $migrations as $migration ) {
-			$upgrade_version = $this->get_upgrade_version( $migration );
+			$upgrade_version    = $this->get_upgrade_version( $migration );
+			$upgrade_versions[] = $upgrade_version;
 
 			if (
 				( isset( $migrated[ $upgrade_version ] ) && $migrated[ $upgrade_version ] >= 0 ) ||
@@ -94,17 +115,24 @@ class Migrations {
 			// Some migration methods can be called several times to support AS action,
 			// so do not log their completion here.
 			if ( null === $result ) {
+				// @codeCoverageIgnoreStart
 				continue;
+				// @codeCoverageIgnoreEnd
 			}
 
 			$migrated[ $upgrade_version ] = $result ? time() : static::FAILED;
 
-			$message = $result ?
-				sprintf( 'Migration of %1$s to %2$s completed.', self::PLUGIN_NAME, $upgrade_version ) :
-				sprintf( 'Migration of %1$s to %2$s failed.', self::PLUGIN_NAME, $upgrade_version );
-
-			$this->log( $message );
+			$this->log_migration_message( $result, $upgrade_version );
 		}
+
+		// Remove any keys that are not in the migrations list.
+		$migrated = array_intersect_key( $migrated, array_flip( $upgrade_versions ) );
+
+		// Store the current version.
+		$migrated[ self::PLUGIN_VERSION ] = $migrated[ self::PLUGIN_VERSION ] ?? time();
+
+		// Sort the array by version.
+		uksort( $migrated, 'version_compare' );
 
 		update_option( self::MIGRATED_VERSIONS_OPTION_NAME, $migrated );
 	}
@@ -112,13 +140,45 @@ class Migrations {
 	/**
 	 * Determine if migration is allowed.
 	 */
-	private function is_allowed(): bool {
+	public function is_allowed(): bool {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( isset( $_GET['service-worker'] ) ) {
 			return false;
 		}
 
-		return ( defined( 'DOING_CRON' ) && DOING_CRON ) || is_admin();
+		return (
+			( is_admin() && ! wp_doing_ajax() ) ||
+			wp_doing_cron() ||
+			( defined( 'WP_CLI' ) && constant( 'WP_CLI' ) )
+		);
+	}
+
+	/**
+	 * Send plugin statistics.
+	 *
+	 * @return void
+	 */
+	public function send_plugin_stats(): void {
+		/**
+		 * Send plugin statistics.
+		 */
+		do_action( 'hcap_send_plugin_stats' );
+	}
+
+	/**
+	 * Check if the plugin was updated.
+	 *
+	 * @param array $migrated Migrated versions.
+	 *
+	 * @return void
+	 */
+	private function check_plugin_update( array $migrated ): void {
+		if ( isset( $migrated[ self::PLUGIN_VERSION ] ) ) {
+			return;
+		}
+
+		// Send statistics on plugin update.
+		add_action( 'init', [ $this, 'send_plugin_stats' ] );
 	}
 
 	/**
@@ -129,32 +189,40 @@ class Migrations {
 	 * @return string
 	 */
 	private function get_upgrade_version( string $method ): string {
-		// Find only the digits to get version number.
-		if ( ! preg_match( '/\d+/', $method, $matches ) ) {
+		// Find only the digits and underscores to get version number.
+		if ( ! preg_match( '/(\d_?)+/', $method, $matches ) ) {
+			// @codeCoverageIgnoreStart
 			return '';
+			// @codeCoverageIgnoreEnd
 		}
 
-		return implode( '.', str_split( $matches[0] ) );
+		$raw_version = $matches[0];
+
+		if ( strpos( $raw_version, '_' ) ) {
+			// Modern notation: 3_10_0 means 3.10.0 version.
+
+			// @codeCoverageIgnoreStart
+			return str_replace( '_', '.', $raw_version );
+			// @codeCoverageIgnoreEnd
+		}
+
+		// Legacy notation, with 1-digit subversion numbers: 360 means 3.6.0 version.
+		return implode( '.', str_split( $raw_version ) );
 	}
 
 	/**
-	 * Output message into log file.
+	 * Output message into the log file.
 	 *
 	 * @param string $message Message to log.
-	 * @param mixed  $item    Item.
 	 *
 	 * @return void
 	 * @noinspection ForgottenDebugOutputInspection
-	 * @noinspection PhpSameParameterValueInspection
 	 */
-	private function log( string $message, $item = null ) {
-		if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ) ) {
+	private function log( string $message ): void {
+		if ( ! ( defined( 'WP_DEBUG' ) && constant( 'WP_DEBUG' ) ) ) {
+			// @codeCoverageIgnoreStart
 			return;
-		}
-
-		if ( null !== $item ) {
-			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r
-			$message .= ' ' . print_r( $item, true );
+			// @codeCoverageIgnoreEnd
 		}
 
 		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
@@ -162,13 +230,30 @@ class Migrations {
 	}
 
 	/**
+	 * Log migration message.
+	 *
+	 * @param bool   $migrated        Migration status.
+	 * @param string $upgrade_version Upgrade version.
+	 *
+	 * @return void
+	 */
+	private function log_migration_message( bool $migrated, string $upgrade_version ): void {
+		$message = $migrated ?
+			sprintf( 'Migration of %1$s to %2$s completed.', self::PLUGIN_NAME, $upgrade_version ) :
+			// @codeCoverageIgnoreStart
+			sprintf( 'Migration of %1$s to %2$s failed.', self::PLUGIN_NAME, $upgrade_version );
+		// @codeCoverageIgnoreEnd
+
+		$this->log( $message );
+	}
+
+	/**
 	 * Migrate to 2.0.0
 	 *
 	 * @return bool|null
-	 * @noinspection PhpUnusedPrivateMethodInspection
-	 * @noinspection MultiAssignmentUsageInspection
+	 * @noinspection PhpUnused
 	 */
-	private function migrate_200() {
+	protected function migrate_200(): ?bool {
 		$options_map = [
 			'hcaptcha_api_key'                     => 'site_key',
 			'hcaptcha_secret_key'                  => 'secret_key',
@@ -222,7 +307,7 @@ class Migrations {
 				continue;
 			}
 
-			list( $new_option_key, $new_option_value ) = $new_option_name;
+			[ $new_option_key, $new_option_value ] = $new_option_name;
 
 			$new_options[ $new_option_key ] = $new_options[ $new_option_key ] ?? [];
 
@@ -231,12 +316,91 @@ class Migrations {
 			}
 		}
 
-		update_option( 'hcaptcha_settings', $new_options );
+		update_option( PluginSettingsBase::OPTION_NAME, $new_options );
 
 		foreach ( array_keys( $options_map ) as $old_option_name ) {
 			delete_option( $old_option_name );
 		}
 
 		return true;
+	}
+
+	/**
+	 * Migrate to 3.6.0
+	 *
+	 * @return bool|null
+	 * @noinspection PhpUnused
+	 */
+	protected function migrate_360(): ?bool {
+		$option         = get_option( PluginSettingsBase::OPTION_NAME, [] );
+		$wpforms_status = $option['wpforms_status'] ?? [];
+
+		if ( empty( $wpforms_status ) ) {
+			return true;
+		}
+
+		// Convert any WPForms status ('lite' or 'pro') to the status 'form'.
+		$option['wpforms_status'] = [ 'form' ];
+
+		update_option( PluginSettingsBase::OPTION_NAME, $option );
+
+		return true;
+	}
+
+	/**
+	 * Migrate to 4.0.0
+	 *
+	 * @return bool|null
+	 * @noinspection PhpUnused
+	 */
+	protected function migrate_4_0_0(): ?bool {
+		Events::create_table();
+
+		add_action( 'plugins_loaded', [ $this, 'save_license_level' ] );
+
+		return true;
+	}
+
+	/**
+	 * Migrate to 4.6.0
+	 *
+	 * @return bool|null
+	 * @noinspection PhpUnused
+	 */
+	protected function migrate_4_6_0(): ?bool {
+		$option         = get_option( PluginSettingsBase::OPTION_NAME, [] );
+		$cf7_status_old = $option['cf7_status'] ?? [];
+		$cf7_status_new = array_unique( array_merge( $cf7_status_old, [ 'live' ] ) );
+
+		if ( $cf7_status_new !== $cf7_status_old ) {
+			// Turn on CF7 Live Form in admin by default.
+			$option['cf7_status'] = $cf7_status_new;
+
+			update_option( PluginSettingsBase::OPTION_NAME, $option );
+		}
+
+		return true;
+	}
+
+	/**
+	 * Save license level in settings.
+	 *
+	 * @return void
+	 */
+	public function save_license_level(): void {
+		// Check the license level.
+		$result = hcap_check_site_config();
+
+		if ( $result['error'] ?? false ) {
+			return;
+		}
+
+		$pro               = $result['features']['custom_theme'] ?? false;
+		$license           = $pro ? 'pro' : 'free';
+		$option            = get_option( PluginSettingsBase::OPTION_NAME, [] );
+		$option['license'] = $license;
+
+		// Save license level in settings.
+		update_option( PluginSettingsBase::OPTION_NAME, $option );
 	}
 }

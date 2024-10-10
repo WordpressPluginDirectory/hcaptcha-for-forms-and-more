@@ -8,6 +8,7 @@
 namespace HCaptcha\AutoVerify;
 
 use HCaptcha\Helpers\Request;
+use WP_Widget_Block;
 
 /**
  * Class AutoVerify
@@ -17,21 +18,26 @@ class AutoVerify {
 	/**
 	 * Transient name where to store registered forms.
 	 */
-	const TRANSIENT = 'hcaptcha_auto_verify';
+	public const TRANSIENT = 'hcaptcha_auto_verify';
 
 	/**
 	 * Init class.
+	 *
+	 * @return void
 	 */
-	public function init() {
+	public function init(): void {
 		$this->init_hooks();
 	}
 
 	/**
 	 * Init hooks.
+	 *
+	 * @return void
 	 */
-	private function init_hooks() {
+	private function init_hooks(): void {
 		add_action( 'init', [ $this, 'verify_form' ], - PHP_INT_MAX );
 		add_filter( 'the_content', [ $this, 'content_filter' ], PHP_INT_MAX );
+		add_filter( 'widget_block_content', [ $this, 'widget_block_content_filter' ], PHP_INT_MAX, 3 );
 		add_action( 'hcap_auto_verify_register', [ $this, 'content_filter' ] );
 	}
 
@@ -40,27 +46,24 @@ class AutoVerify {
 	 *
 	 * @param string|mixed $content Content.
 	 *
-	 * @return string|mixed
+	 * @return string
 	 */
-	public function content_filter( $content ) {
-		if ( ! Request::is_frontend() ) {
-			return $content;
-		}
+	public function content_filter( $content ): string {
+		return $this->process_content( $content );
+	}
 
-		if (
-			preg_match_all(
-				'#<form [\S\s]+?class="h-captcha"[\S\s]+?</form>#',
-				$content,
-				$matches,
-				PREG_PATTERN_ORDER
-			)
-		) {
-			$forms = $matches[0];
-
-			$this->register_forms( $forms );
-		}
-
-		return $content;
+	/**
+	 * Filter block widget content and register the form for auto verification.
+	 *
+	 * @param string|mixed    $content  The widget content.
+	 * @param array           $instance Array of settings for the current widget.
+	 * @param WP_Widget_Block $widget   Current Block widget instance.
+	 *
+	 * @return string
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function widget_block_content_filter( $content, array $instance, WP_Widget_Block $widget ): string {
+		return $this->process_content( $content );
 	}
 
 	/**
@@ -69,16 +72,8 @@ class AutoVerify {
 	 * @return void
 	 * @noinspection ForgottenDebugOutputInspection
 	 */
-	public function verify_form() {
-		if ( ! Request::is_frontend() ) {
-			return;
-		}
-
-		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ?
-			filter_var( wp_unslash( $_SERVER['REQUEST_METHOD'] ), FILTER_SANITIZE_FULL_SPECIAL_CHARS ) :
-			'';
-
-		if ( 'POST' !== $request_method ) {
+	public function verify_form(): void {
+		if ( ! Request::is_post() || ! Request::is_frontend() ) {
 			return;
 		}
 
@@ -112,7 +107,7 @@ class AutoVerify {
 	 *
 	 * @param array $forms Forms found in the content.
 	 */
-	private function register_forms( array $forms ) {
+	protected function register_forms( array $forms ): void {
 		$forms_data = [];
 
 		foreach ( $forms as $form ) {
@@ -224,7 +219,7 @@ class AutoVerify {
 	 *
 	 * @return string|null
 	 */
-	private function get_input_name( string $input ) {
+	private function get_input_name( string $input ): ?string {
 		if ( preg_match( '#name\s*?=\s*?["\'](.+?)["\']#', $input, $matches ) ) {
 			return $matches[1];
 		}
@@ -239,7 +234,7 @@ class AutoVerify {
 	 *
 	 * @return string|null
 	 */
-	private function get_form_auto( string $form ) {
+	private function get_form_auto( string $form ): ?string {
 		if ( preg_match( '#class="h-captcha"[\S\s]+?data-auto="(.*)"[\S\s]*?>#', $form, $matches ) ) {
 			return $matches[1];
 		}
@@ -263,7 +258,7 @@ class AutoVerify {
 	 *
 	 * @param array $forms_data Forms data to update in transient.
 	 */
-	private function update_transient( array $forms_data ) {
+	protected function update_transient( array $forms_data ): void {
 		$transient        = get_transient( self::TRANSIENT );
 		$registered_forms = $transient ?: [];
 
@@ -291,7 +286,7 @@ class AutoVerify {
 			self::TRANSIENT,
 			$registered_forms,
 			/** This filter is documented in wp-includes/pluggable.php. */
-			apply_filters( 'nonce_life', DAY_IN_SECONDS )
+			apply_filters( 'nonce_life', constant( 'DAY_IN_SECONDS' ) )
 		);
 	}
 
@@ -302,7 +297,7 @@ class AutoVerify {
 	 *
 	 * @return bool
 	 */
-	private function is_form_registered( string $path ): bool {
+	protected function is_form_registered( string $path ): bool {
 		$registered_forms = get_transient( self::TRANSIENT );
 
 		if ( empty( $registered_forms ) ) {
@@ -322,5 +317,35 @@ class AutoVerify {
 		}
 
 		return false;
+	}
+
+	/**
+	 * Process content and register the form for auto verification.
+	 *
+	 * @param string|mixed $content Content.
+	 *
+	 * @return string
+	 */
+	private function process_content( $content ): string {
+		$content = (string) $content;
+
+		if ( ! Request::is_frontend() ) {
+			return $content;
+		}
+
+		if (
+			preg_match_all(
+				'#<form [\S\s]+?class="h-captcha"[\S\s]+?</form>#',
+				$content,
+				$matches,
+				PREG_PATTERN_ORDER
+			)
+		) {
+			$forms = $matches[0];
+
+			$this->register_forms( $forms );
+		}
+
+		return $content;
 	}
 }

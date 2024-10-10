@@ -14,21 +14,22 @@ use WP_Error;
  * Class Register
  */
 class Register {
-
-	/**
-	 * WP login URL.
-	 */
-	const WP_LOGIN_URL = '/wp-login.php';
+	use Base;
 
 	/**
 	 * Nonce action.
 	 */
-	const ACTION = 'hcaptcha_registration';
+	private const ACTION = 'hcaptcha_registration';
 
 	/**
 	 * Nonce name.
 	 */
-	const NONCE = 'hcaptcha_registration_nonce';
+	private const NONCE = 'hcaptcha_registration_nonce';
+
+	/**
+	 * WP login action.
+	 */
+	private const WP_LOGIN_ACTION = 'register';
 
 	/**
 	 * Constructor.
@@ -39,8 +40,10 @@ class Register {
 
 	/**
 	 * Init hooks.
+	 *
+	 * @return void
 	 */
-	private function init_hooks() {
+	private function init_hooks(): void {
 		add_action( 'register_form', [ $this, 'add_captcha' ] );
 		add_filter( 'registration_errors', [ $this, 'verify' ], 10, 3 );
 	}
@@ -50,21 +53,8 @@ class Register {
 	 *
 	 * @return void
 	 */
-	public function add_captcha() {
-		$request_uri = isset( $_SERVER['REQUEST_URI'] ) ?
-			filter_var( wp_unslash( $_SERVER['REQUEST_URI'] ), FILTER_SANITIZE_FULL_SPECIAL_CHARS ) :
-			'';
-
-		$request_uri = wp_parse_url( $request_uri, PHP_URL_PATH );
-
-		if ( false === strpos( $request_uri, self::WP_LOGIN_URL ) ) {
-			return;
-		}
-
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$action = isset( $_GET['action'] ) ? sanitize_text_field( wp_unslash( $_GET['action'] ) ) : '';
-
-		if ( 'register' !== $action ) {
+	public function add_captcha(): void {
+		if ( ! $this->is_login_url() || ! $this->is_login_action() ) {
 			return;
 		}
 
@@ -92,10 +82,7 @@ class Register {
 	 * @noinspection PhpUnusedParameterInspection
 	 */
 	public function verify( $errors, string $sanitized_user_login, string $user_email ) {
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$action = isset( $_GET['action'] ) ? sanitize_text_field( wp_unslash( $_GET['action'] ) ) : '';
-
-		if ( 'register' !== $action ) {
+		if ( ! $this->is_login_action() ) {
 			return $errors;
 		}
 

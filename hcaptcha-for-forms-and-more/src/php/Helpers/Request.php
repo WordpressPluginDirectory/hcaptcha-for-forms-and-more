@@ -1,6 +1,6 @@
 <?php
 /**
- * Request class file.
+ * Request class' file.
  *
  * @package hcaptcha-wp
  */
@@ -20,7 +20,20 @@ class Request {
 	 * @return bool
 	 */
 	public static function is_frontend(): bool {
-		return ! ( self::is_cli() || is_admin() || wp_doing_ajax() || self::is_rest() );
+		return ! (
+			self::is_xml_rpc() || self::is_cli() || self::is_wc_ajax() ||
+			is_admin() || wp_doing_ajax() || wp_doing_cron() ||
+			self::is_rest()
+		);
+	}
+
+	/**
+	 * Check if it is the xml-rpc request.
+	 *
+	 * @return bool
+	 */
+	public static function is_xml_rpc(): bool {
+		return defined( 'XMLRPC_REQUEST' ) && constant( 'XMLRPC_REQUEST' );
 	}
 
 	/**
@@ -30,6 +43,16 @@ class Request {
 	 */
 	public static function is_cli(): bool {
 		return defined( 'WP_CLI' ) && constant( 'WP_CLI' );
+	}
+
+	/**
+	 * Check if it is a WooCommerce AJAX request.
+	 *
+	 * @return bool
+	 */
+	public static function is_wc_ajax(): bool {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		return isset( $_GET['wc-ajax'] );
 	}
 
 	/**
@@ -77,5 +100,42 @@ class Request {
 		$rest_url    = wp_parse_url( trailingslashit( rest_url() ), PHP_URL_PATH );
 
 		return 0 === strpos( $current_url, $rest_url );
+	}
+
+	/**
+	 * Check if it is a POST request.
+	 *
+	 * @return bool
+	 */
+	public static function is_post(): bool {
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] )
+			? strtoupper( filter_var( wp_unslash( $_SERVER['REQUEST_METHOD'] ), FILTER_SANITIZE_FULL_SPECIAL_CHARS ) )
+			: '';
+
+		return 'POST' === $request_method;
+	}
+
+	/**
+	 * Filter input in WP style.
+	 * Nonce must be checked in the calling function.
+	 *
+	 * @param int    $type     Input type.
+	 * @param string $var_name Variable name.
+	 *
+	 * @return string
+	 */
+	public static function filter_input( int $type, string $var_name ): string {
+		switch ( $type ) {
+			case INPUT_GET:
+				// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				return isset( $_GET[ $var_name ] ) ? sanitize_text_field( wp_unslash( $_GET[ $var_name ] ) ) : '';
+			case INPUT_POST:
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing
+				return isset( $_POST[ $var_name ] ) ? sanitize_text_field( wp_unslash( $_POST[ $var_name ] ) ) : '';
+			case INPUT_SERVER:
+				return isset( $_SERVER[ $var_name ] ) ? sanitize_text_field( wp_unslash( $_SERVER[ $var_name ] ) ) : '';
+			default:
+				return '';
+		}
 	}
 }

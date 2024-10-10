@@ -8,109 +8,44 @@
 use HCaptcha\Helpers\HCaptcha;
 
 /**
- * Get hCaptcha form.
- *
- * @param string $action Action name for wp_nonce_field.
- * @param string $name   Nonce name for wp_nonce_field.
- * @param bool   $auto   This form has to be auto-verified.
- *
- * @return string
- * @deprecated 2.7.0 Use \HCaptcha\Helpers\HCaptcha::form()
- */
-function hcap_form( string $action = '', string $name = '', bool $auto = false ): string {
-	// @codeCoverageIgnoreStart
-	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-	_deprecated_function( __FUNCTION__, '2.7.0', HCaptcha::class . '::form()' );
-
-	$args = [
-		'action' => $action,
-		'name'   => $name,
-		'auto'   => $auto,
-	];
-
-	return HCaptcha::form( $args );
-	// @codeCoverageIgnoreEnd
-}
-
-/**
- * Display hCaptcha form.
- *
- * @param string $action Action name for wp_nonce_field.
- * @param string $name   Nonce name for wp_nonce_field.
- * @param bool   $auto   This form has to be auto-verified.
- *
- * @deprecated 2.7.0 Use \HCaptcha\Helpers\HCaptcha::form_display()
- */
-function hcap_form_display( string $action = '', string $name = '', bool $auto = false ) {
-	// @codeCoverageIgnoreStart
-	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-	_deprecated_function( __FUNCTION__, '2.7.0', HCaptcha::class . '::form_display()' );
-
-	$args = [
-		'action' => $action,
-		'name'   => $name,
-		'auto'   => $auto,
-	];
-
-	HCaptcha::form_display( $args );
-	// @codeCoverageIgnoreEnd
-}
-
-/**
  * Display hCaptcha shortcode.
  *
- * @param array|string $atts hcaptcha shortcode attributes.
+ * @param array|string $atts The hCaptcha shortcode attributes.
  *
  * @return string
  */
 function hcap_shortcode( $atts ): string {
+	$settings       = hcaptcha()->settings();
+	$hcaptcha_force = $settings->is_on( 'force' );
+	$hcaptcha_size  = $settings->get( 'size' );
+
 	/**
 	 * Do not set the default size here.
 	 * If size is not normal|compact|invisible, it will be taken from plugin settings in HCaptcha::form().
 	 */
 	$atts = shortcode_atts(
 		[
-			'action' => HCAPTCHA_ACTION,
-			'name'   => HCAPTCHA_NONCE,
-			'auto'   => false,
-			'size'   => '',
+			'action'  => HCAPTCHA_ACTION,
+			'name'    => HCAPTCHA_NONCE,
+			'auto'    => false,
+			'force'   => $hcaptcha_force,
+			'size'    => $hcaptcha_size,
+			'id'      => [],
+			'protect' => true,
 		],
 		$atts
 	);
 
-	$atts['auto'] = filter_var( $atts['auto'], FILTER_VALIDATE_BOOLEAN );
-
 	/**
-	 * Filters the content of the hcaptcha form.
+	 * Filters the content of the hCaptcha form.
 	 *
-	 * @param string $form The hcaptcha form.
+	 * @param string $form The hCaptcha form.
+	 * @param array  $atts The hCaptcha shortcode attributes.
 	 */
-	return (string) apply_filters( 'hcap_hcaptcha_content', HCaptcha::form( $atts ) );
+	return (string) apply_filters( 'hcap_hcaptcha_content', HCaptcha::form( $atts ), $atts );
 }
 
 add_shortcode( 'hcaptcha', 'hcap_shortcode' );
-
-// @codeCoverageIgnoreStart
-if ( ! function_exists( 'wp_doing_ajax' ) ) :
-	/**
-	 * Determines whether the current request is a WordPress Ajax request.
-	 *
-	 * @since 4.7.0
-	 *
-	 * @return bool True if it's a WordPress Ajax request, false otherwise.
-	 */
-	function wp_doing_ajax() {
-		/**
-		 * Filters whether the current request is a WordPress Ajax request.
-		 *
-		 * @since 4.7.0
-		 *
-		 * @param bool $wp_doing_ajax Whether the current request is a WordPress Ajax request.
-		 */
-		return apply_filters( 'wp_doing_ajax', defined( 'DOING_AJAX' ) && DOING_AJAX );
-	}
-endif;
-// @codeCoverageIgnoreEnd
 
 /**
  * Get min suffix.
