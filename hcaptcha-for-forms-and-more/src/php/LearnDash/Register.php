@@ -18,12 +18,12 @@ class Register {
 	/**
 	 * Nonce action.
 	 */
-	private const ACTION = 'hcaptcha_theme_my_login_register';
+	private const ACTION = 'hcaptcha_learn_dash_register';
 
 	/**
 	 * Nonce name.
 	 */
-	private const NONCE = 'hcaptcha_theme_my_login_register_nonce';
+	private const NONCE = 'hcaptcha_learn_dash_register_nonce';
 
 	/**
 	 * Constructor.

@@ -438,8 +438,10 @@ class Main {
 	 * @noinspection CssUnusedSymbol
 	 */
 	public function print_inline_styles(): void {
+		$settings           = $this->settings();
 		$div_logo_url       = HCAPTCHA_URL . '/assets/images/hcaptcha-div-logo.svg';
 		$div_logo_white_url = HCAPTCHA_URL . '/assets/images/hcaptcha-div-logo-white.svg';
+		$bg                 = $settings->get_custom_theme_background() ?: 'initial';
 
 		$css = <<<CSS
 	.h-captcha {
@@ -504,6 +506,10 @@ class Main {
 		border: 1px solid #f5f5f5;
 	}
 
+	.h-captcha[data-theme="custom"]::before {
+		background-color: $bg;
+	}
+
 	.h-captcha[data-size="invisible"]::before {
 		display: none;
 	}
@@ -516,20 +522,6 @@ class Main {
 		border-style: none;
 	}
 CSS;
-
-		$settings = $this->settings();
-
-		if ( $settings->is_on( 'custom_themes' ) && $settings->is_pro_or_general() ) {
-			$bg = $settings->get_config_params()['theme']['component']['checkbox']['main']['fill'] ?? '';
-
-			if ( $bg ) {
-				$css .= <<<CSS
-	.h-captcha::before {
-		background-color: $bg !important;	
-	}
-CSS;
-			}
-		}
 
 		HCaptcha::css_display( $css );
 	}
@@ -1001,6 +993,26 @@ CSS;
 				'Divi',
 				[ Divi\Login::class ],
 			],
+			'Divi Builder Comment Form'            => [
+				[ 'divi_builder_status', 'comment' ],
+				'divi-builder/divi-builder.php',
+				[ Divi\Comment::class, WP\Comment::class ],
+			],
+			'Divi Builder Contact Form'            => [
+				[ 'divi_builder_status', 'contact' ],
+				'divi-builder/divi-builder.php',
+				Divi\Contact::class,
+			],
+			'Divi Builder Email Optin Form'        => [
+				[ 'divi_builder_status', 'email_optin' ],
+				'divi-builder/divi-builder.php',
+				Divi\EmailOptin::class,
+			],
+			'Divi Builder Login Form'              => [
+				[ 'divi_builder_status', null ],
+				'divi-builder/divi-builder.php',
+				[ Divi\Login::class ],
+			],
 			'Download Manager'                     => [
 				[ 'download_manager_status', 'button' ],
 				'download-manager/download-manager.php',
@@ -1050,6 +1062,26 @@ CSS;
 				[ 'essential_blocks_status', 'form' ],
 				'essential-blocks/essential-blocks.php',
 				EssentialBlocks\Form::class,
+			],
+			'Extra Comment Form'                   => [
+				[ 'extra_status', 'comment' ],
+				'Extra',
+				[ Divi\Comment::class, WP\Comment::class ],
+			],
+			'Extra Contact Form'                   => [
+				[ 'extra_status', 'contact' ],
+				'Extra',
+				Divi\Contact::class,
+			],
+			'Extra Email Optin Form'               => [
+				[ 'extra_status', 'email_optin' ],
+				'Extra',
+				Divi\EmailOptin::class,
+			],
+			'Extra Login Form'                     => [
+				[ 'extra_status', null ],
+				'Extra',
+				[ Divi\Login::class ],
 			],
 			'Fluent Forms'                         => [
 				[ 'fluent_status', 'form' ],
@@ -1111,6 +1143,21 @@ CSS;
 				'sfwd-lms/sfwd_lms.php',
 				LearnDash\Register::class,
 			],
+			'LearnPress Checkout'                  => [
+				[ 'learn_press_status', 'checkout' ],
+				'learnpress/learnpress.php',
+				LearnPress\Checkout::class,
+			],
+			'LearnPress Login'                     => [
+				[ 'learn_press_status', 'login' ],
+				'learnpress/learnpress.php',
+				LearnPress\Login::class,
+			],
+			'LearnPress Register'                  => [
+				[ 'learn_press_status', 'register' ],
+				'learnpress/learnpress.php',
+				LearnPress\Register::class,
+			],
 			'Login/Signup Popup Login Form'        => [
 				[ 'login_signup_popup_status', 'login' ],
 				'easy-login-woocommerce/xoo-el-main.php',
@@ -1130,6 +1177,11 @@ CSS;
 				[ 'mailpoet_status', 'form' ],
 				'mailpoet/mailpoet.php',
 				MailPoet\Form::class,
+			],
+			'Maintenance Login'                    => [
+				[ 'maintenance_status', 'login' ],
+				'maintenance/maintenance.php',
+				Maintenance\Login::class,
 			],
 			'MemberPress Login'                    => [
 				[ 'memberpress_status', 'login' ],
@@ -1245,6 +1297,26 @@ CSS;
 				[ 'theme_my_login_status', 'register' ],
 				'theme-my-login/theme-my-login.php',
 				ThemeMyLogin\Register::class,
+			],
+			'Tutor Checkout'                       => [
+				[ 'tutor_status', 'checkout' ],
+				'tutor/tutor.php',
+				Tutor\Checkout::class,
+			],
+			'Tutor LMS Login'                      => [
+				[ 'tutor_status', 'login' ],
+				'tutor/tutor.php',
+				Tutor\Login::class,
+			],
+			'Tutor LMS LostPassword'               => [
+				[ 'tutor_status', 'lost_pass' ],
+				'tutor/tutor.php',
+				Tutor\LostPassword::class,
+			],
+			'Tutor LMS Register'                   => [
+				[ 'tutor_status', 'register' ],
+				'tutor/tutor.php',
+				Tutor\Register::class,
 			],
 			'Ultimate Member Login'                => [
 				[ 'ultimate_member_status', 'login' ],

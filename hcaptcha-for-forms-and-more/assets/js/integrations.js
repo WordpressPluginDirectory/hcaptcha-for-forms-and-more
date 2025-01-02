@@ -1,21 +1,22 @@
 /* global jQuery, HCaptchaIntegrationsObject, kaggDialog */
 
 /**
- * @param HCaptchaIntegrationsObject.ajaxUrl
- * @param HCaptchaIntegrationsObject.action
- * @param HCaptchaIntegrationsObject.nonce
- * @param HCaptchaIntegrationsObject.activateMsg
- * @param HCaptchaIntegrationsObject.deactivateMsg
- * @param HCaptchaIntegrationsObject.installMsg
- * @param HCaptchaIntegrationsObject.activateThemeMsg
- * @param HCaptchaIntegrationsObject.deactivateThemeMsg
- * @param HCaptchaIntegrationsObject.selectThemeMsg
- * @param HCaptchaIntegrationsObject.onlyOneThemeMsg
- * @param HCaptchaIntegrationsObject.unexpectedErrorMsg
- * @param HCaptchaIntegrationsObject.OKBtnText
  * @param HCaptchaIntegrationsObject.CancelBtnText
- * @param HCaptchaIntegrationsObject.themes
+ * @param HCaptchaIntegrationsObject.OKBtnText
+ * @param HCaptchaIntegrationsObject.action
+ * @param HCaptchaIntegrationsObject.activatePluginMsg
+ * @param HCaptchaIntegrationsObject.activateThemeMsg
+ * @param HCaptchaIntegrationsObject.ajaxUrl
+ * @param HCaptchaIntegrationsObject.deactivatePluginMsg
+ * @param HCaptchaIntegrationsObject.deactivateThemeMsg
  * @param HCaptchaIntegrationsObject.defaultTheme
+ * @param HCaptchaIntegrationsObject.installPluginMsg
+ * @param HCaptchaIntegrationsObject.installThemeMsg
+ * @param HCaptchaIntegrationsObject.nonce
+ * @param HCaptchaIntegrationsObject.onlyOneThemeMsg
+ * @param HCaptchaIntegrationsObject.selectThemeMsg
+ * @param HCaptchaIntegrationsObject.themes
+ * @param HCaptchaIntegrationsObject.unexpectedErrorMsg
  */
 
 /**
@@ -24,8 +25,19 @@
  * @param {jQuery} $ The jQuery instance.
  */
 const integrations = function( $ ) {
+	/**
+	 * @type {HTMLElement}
+	 */
 	const adminBar = document.querySelector( '#wpadminbar' );
+
+	/**
+	 * @type {HTMLElement}
+	 */
 	const tabs = document.querySelector( '.hcaptcha-settings-tabs' );
+
+	/**
+	 * @type {HTMLElement}
+	 */
 	const headerBar = document.querySelector( '.hcaptcha-header-bar' );
 	const msgSelector = '#hcaptcha-message';
 	let $message = $( msgSelector );
@@ -44,7 +56,8 @@ const integrations = function( $ ) {
 
 	function clearMessage() {
 		$message.remove();
-		$( '<div id="hcaptcha-message"></div>' ).insertAfter( '.hcaptcha-header-bar' );
+		// Concat below to avoid inspection message.
+		$( '<div id="hcaptcha-message">' + '</div>' ).insertAfter( '.hcaptcha-header-bar' );
 		$message = $( msgSelector );
 	}
 
@@ -150,6 +163,14 @@ const integrations = function( $ ) {
 	}
 
 	$( '.form-table img' ).on( 'click', function( event ) {
+		function maybeInstallEntity( confirmation ) {
+			if ( ! confirmation ) {
+				return;
+			}
+
+			installEntity();
+		}
+
 		function maybeToggleActivation( confirmation ) {
 			if ( ! confirmation ) {
 				return;
@@ -159,6 +180,9 @@ const integrations = function( $ ) {
 		}
 
 		function getSelectedTheme() {
+			/**
+			 * @type {HTMLSelectElement}
+			 */
 			const select = document.querySelector( '.kagg-dialog select' );
 
 			if ( ! select ) {
@@ -173,32 +197,43 @@ const integrations = function( $ ) {
 
 			for ( const [ key, status ] of Object.entries( stati ) ) {
 				const statusClass = 'hcaptcha-integrations-' + key.replace( /_/g, '-' );
-
 				const $tr = $( `tr.${ statusClass }` );
+				const $logo = $tr.find( '.hcaptcha-integrations-logo' );
 				const currStatus = isActiveTable( $tr.closest( '.form-table' ) );
+
+				if ( status ) {
+					$logo.attr( 'data-installed', true );
+				}
 
 				if ( currStatus !== status ) {
 					const $toTable = $tables.eq( status ? 0 : 1 );
-					const alt = $tr.find( '.hcaptcha-integrations-logo img' ).attr( 'alt' );
+					const alt = $logo.find( 'img' ).attr( 'alt' );
 
 					insertIntoTable( $toTable, alt, $tr );
 				}
 			}
 		}
 
-		function toggleActivation() {
-			const activateClass = activate ? 'on' : 'off';
+		function installEntity() {
+			toggleActivation( true );
+		}
+
+		function toggleActivation( install = false ) {
+			let actionClass = activate ? 'on' : 'off';
+			actionClass = install ? 'install' : actionClass;
+
 			const newTheme = getSelectedTheme();
 			const data = {
 				action: HCaptchaIntegrationsObject.action,
 				nonce: HCaptchaIntegrationsObject.nonce,
+				install,
 				activate,
 				entity,
 				status,
 				newTheme,
 			};
 
-			$tr.addClass( activateClass );
+			$tr.addClass( actionClass );
 
 			// noinspection JSVoidFunctionReturnValueUsed
 			$.post( {
@@ -221,8 +256,8 @@ const integrations = function( $ ) {
 					}
 
 					if ( response.data.themes !== undefined ) {
-						window.HCaptchaIntegrationsObject.themes = response.data.themes;
-						window.HCaptchaIntegrationsObject.defaultTheme = response.data.defaultTheme;
+						HCaptchaIntegrationsObject.themes = response.data.themes;
+						HCaptchaIntegrationsObject.defaultTheme = response.data.defaultTheme;
 					}
 
 					if ( ! response.success ) {
@@ -247,11 +282,16 @@ const integrations = function( $ ) {
 						1000
 					);
 				} )
-				.fail( function( response ) {
-					showErrorMessage( response.statusText );
-				} )
+				.fail(
+					/**
+					 * @param {Object} response
+					 */
+					function( response ) {
+						showErrorMessage( response.statusText );
+					}
+				)
 				.always( function() {
-					$tr.removeClass( 'on off' );
+					$tr.removeClass( 'install on off' );
 				} );
 		}
 
@@ -277,8 +317,8 @@ const integrations = function( $ ) {
 		alt = alt.replace( ' Logo', '' );
 
 		const $tr = $target.closest( 'tr' );
-		let status = $tr.attr( 'class' );
-		status = status.replace( 'hcaptcha-integrations-', '' );
+		const match = $tr.attr( 'class' ).match( /hcaptcha-integrations-([a-z0-9-]+)/ );
+		const status = match ? match[ 1 ] : '';
 
 		const $fieldset = $tr.find( 'fieldset' );
 		let title;
@@ -287,12 +327,12 @@ const integrations = function( $ ) {
 
 		if ( $fieldset.attr( 'disabled' ) ) {
 			title = entity === 'plugin'
-				? HCaptchaIntegrationsObject.activateMsg
+				? HCaptchaIntegrationsObject.activatePluginMsg
 				: HCaptchaIntegrationsObject.activateThemeMsg;
 			activate = true;
 		} else {
 			if ( entity === 'plugin' ) {
-				title = HCaptchaIntegrationsObject.deactivateMsg;
+				title = HCaptchaIntegrationsObject.deactivatePluginMsg;
 			} else {
 				title = HCaptchaIntegrationsObject.deactivateThemeMsg;
 				content = '<p>' + HCaptchaIntegrationsObject.selectThemeMsg + '</p>';
@@ -332,8 +372,17 @@ const integrations = function( $ ) {
 
 		const $logo = $tr.find( '.hcaptcha-integrations-logo' );
 
-		if ( ! $logo.data( 'installed' ) ) {
-			title = HCaptchaIntegrationsObject.installMsg;
+		if ( $logo.attr( 'data-installed' ) === 'false' ) {
+			if ( event.ctrlKey ) {
+				installEntity();
+
+				return;
+			}
+
+			title = entity === 'plugin'
+				? HCaptchaIntegrationsObject.installPluginMsg
+				: HCaptchaIntegrationsObject.installThemeMsg;
+
 			title = title.replace( '%s', alt );
 
 			kaggDialog.confirm( {
@@ -344,7 +393,11 @@ const integrations = function( $ ) {
 					ok: {
 						text: HCaptchaIntegrationsObject.OKBtnText,
 					},
+					cancel: {
+						text: HCaptchaIntegrationsObject.CancelBtnText,
+					},
 				},
+				onAction: maybeInstallEntity,
 			} );
 
 			return;

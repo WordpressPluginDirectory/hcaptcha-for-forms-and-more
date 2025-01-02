@@ -4,6 +4,9 @@
  * @param flatpickr.l10ns
  */
 document.addEventListener( 'DOMContentLoaded', function() {
+	/**
+	 * @type {HTMLInputElement}
+	 */
 	const datepicker = document.getElementById( 'hcaptcha-datepicker' );
 
 	if ( ! datepicker ) {
@@ -31,6 +34,7 @@ document.addEventListener( 'DOMContentLoaded', function() {
 		} );
 		wrapper.querySelector( '[type="reset"]' ).addEventListener( 'click', onResetDatepicker );
 		wrapper.addEventListener( 'submit', onSubmitDatepicker );
+		wrapper.querySelector( '#current-page-selector' ).addEventListener( 'keydown', onPageNumberEnter );
 	}
 
 	function onSubmitDatepicker( event ) {
@@ -46,6 +50,10 @@ document.addEventListener( 'DOMContentLoaded', function() {
 		hideElement( filterBtn.nextElementSibling );
 
 		const currentUrl = new URL( window.location.href );
+
+		/**
+		 * @type {URLSearchParams}
+		 */
 		const searchParams = currentUrl.searchParams;
 
 		// Set date URL arg.
@@ -76,10 +84,43 @@ document.addEventListener( 'DOMContentLoaded', function() {
 		}
 
 		// When the dropdown is open, aria-expanded="true".
-		selectorElement.setAttribute( 'aria-expanded', selectorElement.style.display === 'block' );
+		selectorElement.setAttribute(
+			'aria-expanded',
+			selectorElement.style.display === 'block' ? 'true' : 'false'
+		);
+	}
+
+	function onPageNumberEnter( event ) {
+		if ( event.key !== 'Enter' ) {
+			return;
+		}
+
+		event.preventDefault();
+
+		const currentUrl = new URL( window.location.href );
+		let paged = parseInt( currentUrl.searchParams.get( 'paged' ) );
+		const newPaged = parseInt( event.target.value );
+
+		if ( isNaN( paged ) || paged < 1 ) {
+			paged = 1;
+		}
+
+		if ( isNaN( newPaged ) || newPaged < 1 ) {
+			return;
+		}
+
+		currentUrl.searchParams.delete( 'paged' );
+
+		if ( newPaged !== paged ) {
+			currentUrl.searchParams.set( 'paged', newPaged.toString() );
+			window.location.href = currentUrl.href;
+		}
 	}
 
 	function onClickOutside( event ) {
+		/**
+		 * @type {HTMLElement}
+		 */
 		const selector = document.querySelector( '.hcaptcha-datepicker-popover' );
 
 		// Check if the click is outside the target element.
@@ -113,12 +154,24 @@ document.addEventListener( 'DOMContentLoaded', function() {
 
 	// eslint-disable-next-line no-unused-vars
 	function onUpdateDatepicker( event = {}, isCustomDates = false ) {
+		/**
+		 * @type {HTMLInputElement}
+		 */
 		const selected = filterForm.querySelector( 'input:checked' );
 		const parent = selected.parentElement;
+
+		/**
+		 * @type {HTMLInputElement}
+		 */
 		const target = isCustomDates ? datepicker : selected;
 		const dates = target.value.split( delimiter );
 
-		filterBtn.textContent = isCustomDates ? target.nextElementSibling.value : parent.textContent;
+		/**
+		 * @type {HTMLInputElement} target
+		 */
+		const nextElementSibling = target.nextElementSibling;
+
+		filterBtn.textContent = isCustomDates ? nextElementSibling.value : parent.textContent;
 
 		selectDatepickerChoice( parent );
 
@@ -133,6 +186,11 @@ document.addEventListener( 'DOMContentLoaded', function() {
 	}
 
 	function initFlatPicker() {
+		/**
+		 * @type {HTMLInputElement} target
+		 */
+		const customInput = filterForm.querySelector( 'input[value="custom"]' );
+
 		flatPickerObj = flatpickr( datepicker, {
 			mode: 'range',
 			inline: true,
@@ -149,10 +207,8 @@ document.addEventListener( 'DOMContentLoaded', function() {
 			},
 			onChange( selectedDates, dateStr, instance ) {
 				// Immediately after a user interacts with the datepicker, ensure that the "Custom" option is chosen.
-				const custom = filterForm.querySelector( 'input[value="custom"]' );
-
-				custom.checked = true;
-				selectDatepickerChoice( custom.parentElement );
+				customInput.checked = true;
+				selectDatepickerChoice( customInput.parentElement );
 
 				if ( dateStr ) {
 					// Update filter button label when date range specified.
@@ -162,7 +218,7 @@ document.addEventListener( 'DOMContentLoaded', function() {
 		} );
 
 		// Determine if a custom date range was provided or selected.
-		onUpdateDatepicker( {}, filterForm.querySelector( 'input[value="custom"]' ).checked );
+		onUpdateDatepicker( {}, customInput.checked );
 	}
 
 	bindEvents();
