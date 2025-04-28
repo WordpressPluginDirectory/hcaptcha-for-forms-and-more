@@ -127,7 +127,7 @@ function hcap_get_error_message( $error_codes ): string {
 function hcap_check_site_config(): array {
 	$settings = hcaptcha()->settings();
 	$params   = [
-		'host'    => (string) wp_parse_url( site_url(), PHP_URL_HOST ),
+		'host'    => (string) wp_parse_url( home_url(), PHP_URL_HOST ),
 		'sitekey' => $settings->get_site_key(),
 		'sc'      => 1,
 		'swa'     => 1,
@@ -178,7 +178,6 @@ if ( ! function_exists( 'hcaptcha_request_verify' ) ) {
 	 *
 	 * @return null|string Null on success, error message on failure.
 	 * @noinspection PhpMissingParamTypeInspection
-	 * @noinspection UnnecessaryBooleanExpressionInspection
 	 */
 	function hcaptcha_request_verify( $hcaptcha_response ): ?string {
 		static $result;
@@ -316,32 +315,6 @@ if ( ! function_exists( 'hcaptcha_verify_post' ) ) {
 		}
 
 		return hcaptcha_request_verify( $hcaptcha_response );
-	}
-}
-
-if ( ! function_exists( 'hcaptcha_get_verify_output' ) ) {
-	/**
-	 * Get verify output.
-	 *
-	 * @param string $empty_message     Empty message.
-	 * @param string $fail_message      Fail message.
-	 * @param string $nonce_field_name  Nonce field name.
-	 * @param string $nonce_action_name Nonce action name.
-	 *
-	 * @deprecated 4.7.0
-	 *
-	 * @return null|string Null on success, error message on failure.
-	 */
-	function hcaptcha_get_verify_output( string $empty_message, string $fail_message, string $nonce_field_name, string $nonce_action_name ): ?string {
-		_deprecated_function( __FUNCTION__, '4.7.0', 'hcaptcha_verify_post' );
-
-		if ( ! empty( $empty_message ) || ! empty( $fail_message ) ) {
-			// @codeCoverageIgnoreStart
-			_deprecated_argument( __FUNCTION__, '2.1.0' );
-			// @codeCoverageIgnoreEnd
-		}
-
-		return hcaptcha_verify_post( $nonce_field_name, $nonce_action_name );
 	}
 }
 

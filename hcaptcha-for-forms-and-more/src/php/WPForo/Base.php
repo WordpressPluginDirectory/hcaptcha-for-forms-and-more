@@ -29,7 +29,7 @@ abstract class Base {
 	private function init_hooks(): void {
 		add_action( static::ADD_CAPTCHA_HOOK, [ $this, 'add_captcha' ], 99 );
 		add_filter( static::VERIFY_HOOK, [ $this, 'verify' ] );
-		add_action( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ] );
+		add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ], 0 );
 		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
 		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
@@ -90,10 +90,10 @@ abstract class Base {
 	 *
 	 * @param bool|mixed $status Print scripts status.
 	 *
-	 * @return bool|mixed
+	 * @return bool
 	 */
-	public function print_hcaptcha_scripts( $status ) {
-		return HCaptcha::did_filter( 'wpforo_template' ) ? true : $status;
+	public function print_hcaptcha_scripts( $status ): bool {
+		return HCaptcha::did_filter( 'wpforo_template' ) || $status;
 	}
 
 	/**
@@ -128,7 +128,8 @@ abstract class Base {
 
 		$style_shown = true;
 
-		$css = <<<CSS
+		/* language=CSS */
+		$css = '
 	#wpforo #wpforo-wrap div .h-captcha {
 		position: relative;
 		display: block;
@@ -141,7 +142,7 @@ abstract class Base {
 	#wpforo #wpforo-wrap.wpft-forum div .h-captcha {
 		margin: 0 -20px;
 	}
-CSS;
+';
 
 		HCaptcha::css_display( $css );
 	}

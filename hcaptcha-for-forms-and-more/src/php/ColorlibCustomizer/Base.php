@@ -10,7 +10,7 @@ namespace HCaptcha\ColorlibCustomizer;
 use HCaptcha\Helpers\HCaptcha;
 
 /**
- * Class Login
+ * Class Base
  */
 abstract class Base {
 
@@ -28,6 +28,7 @@ abstract class Base {
 	 */
 	protected function init_hooks(): void {
 		add_action( 'login_head', [ $this, 'login_head' ] );
+		add_action( 'hcap_delay_api', [ $this, 'delay_api' ], 0 );
 	}
 
 	/**
@@ -64,13 +65,28 @@ abstract class Base {
 		$css         = '';
 
 		if ( 'normal' === $hcaptcha_size ) {
-			$css = <<<CSS
+			/* language=CSS */
+			$css = '
 	.ml-container #login {
 		min-width: 350px;
 	}
-CSS;
+';
 		}
 
 		return $css;
+	}
+
+	/**
+	 * Filters delay time for the hCaptcha API script.
+	 *
+	 * @param int|mixed $delay Number of milliseconds to delay hCaptcha API script.
+	 *                         Any negative value means delay until user interaction.
+	 *
+	 * @return int
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function delay_api( $delay ): int {
+		// Do not delay API request on login forms for compatibility with password managers.
+		return 0;
 	}
 }

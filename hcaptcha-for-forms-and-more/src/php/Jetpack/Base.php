@@ -81,7 +81,7 @@ abstract class Base {
 			return;
 		}
 
-		add_action( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ] );
+		add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ], 0 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'admin_enqueue_scripts' ] );
 	}
 
@@ -142,15 +142,15 @@ abstract class Base {
 			return $hcaptcha;
 		}
 
-		$message = <<< HTML
+		$message = '
 <div class="contact-form__input-error">
 	<span class="contact-form__warning-icon">
 		<span class="visually-hidden">Warning.</span>
 		<i aria-hidden="true"></i>
 	</span>
-	<span>$this->error_message</span>
+	<span>' . $this->error_message . '</span>
 </div>
-HTML;
+';
 
 		return $hcaptcha . $message;
 	}
@@ -200,7 +200,8 @@ HTML;
 	 * @noinspection CssUnusedSymbol CssUnusedSymbol.
 	 */
 	public function print_inline_styles(): void {
-		$css = <<<CSS
+		/* language=CSS */
+		$css = '
 	form.contact-form .grunion-field-hcaptcha-wrap.grunion-field-wrap {
 		flex-direction: row !important;
 	}
@@ -209,7 +210,7 @@ HTML;
 	form.wp-block-jetpack-contact-form .grunion-field-wrap .h-captcha {
 		margin-bottom: 0;
 	}
-CSS;
+';
 
 		HCaptcha::css_display( $css );
 	}

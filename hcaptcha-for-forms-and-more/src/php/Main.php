@@ -15,19 +15,24 @@ namespace HCaptcha;
 use Automattic\WooCommerce\Utilities\FeaturesUtil;
 use HCaptcha\Admin\Events\Events;
 use HCaptcha\Admin\PluginStats;
+use HCaptcha\Admin\Privacy;
+use HCaptcha\Admin\WhatsNew;
 use HCaptcha\AutoVerify\AutoVerify;
 use HCaptcha\CF7\Admin;
 use HCaptcha\CACSP\Compatibility;
 use HCaptcha\CF7\CF7;
+use HCaptcha\CF7\ReallySimpleCaptcha;
 use HCaptcha\DelayedScript\DelayedScript;
 use HCaptcha\Divi\Fix;
 use HCaptcha\DownloadManager\DownloadManager;
 use HCaptcha\ElementorPro\HCaptchaHandler;
+use HCaptcha\EventsManager\Booking;
 use HCaptcha\Helpers\HCaptcha;
 use HCaptcha\Helpers\Pages;
 use HCaptcha\Helpers\Request;
 use HCaptcha\Migrations\Migrations;
 use HCaptcha\NF\NF;
+use HCaptcha\ProtectContent\ProtectContent;
 use HCaptcha\Quform\Quform;
 use HCaptcha\Sendinblue\Sendinblue;
 use HCaptcha\Settings\EventsPage;
@@ -37,7 +42,6 @@ use HCaptcha\Settings\Integrations;
 use HCaptcha\Settings\Settings;
 use HCaptcha\Settings\SystemInfo;
 use HCaptcha\WCWishlists\CreateList;
-use HCaptcha\WP\PasswordProtected;
 
 /**
  * Class Main.
@@ -124,6 +128,13 @@ class Main {
 	protected $auto_verify;
 
 	/**
+	 * Instance of ProtectContent.
+	 *
+	 * @var ProtectContent
+	 */
+	protected $protect_content;
+
+	/**
 	 * Whether hCaptcha is active.
 	 *
 	 * @var bool
@@ -143,10 +154,6 @@ class Main {
 		}
 
 		$this->migrations = new Migrations();
-
-		if ( wp_doing_cron() ) {
-			return;
-		}
 
 		( new Fix() )->init();
 
@@ -185,11 +192,17 @@ class Main {
 			]
 		);
 
+		if ( wp_doing_cron() ) {
+			return;
+		}
+
 		$this->load( PluginStats::class );
 		$this->load( Events::class );
+		$this->load( Privacy::class );
+		$this->load( WhatsNew::class );
 
 		add_action( 'plugins_loaded', [ $this, 'load_modules' ], self::LOAD_PRIORITY + 1 );
-		add_filter( 'hcap_whitelist_ip', [ $this, 'whitelist_ip' ], -PHP_INT_MAX, 2 );
+		add_filter( 'hcap_whitelist_ip', [ $this, 'allowlist_ip' ], -PHP_INT_MAX, 2 );
 		add_action( 'before_woocommerce_init', [ $this, 'declare_wc_compatibility' ] );
 
 		$this->active = $this->activate_hcaptcha();
@@ -207,6 +220,9 @@ class Main {
 
 		$this->auto_verify = new AutoVerify();
 		$this->auto_verify->init();
+
+		$this->protect_content = new ProtectContent();
+		$this->protect_content->init();
 	}
 
 	/**
@@ -251,15 +267,15 @@ class Main {
 		/**
 		 * Do not load hCaptcha functionality:
 		 * - if a user is logged in and the option 'off_when_logged_in' is set;
-		 * - for whitelisted IPs;
+		 * - for allowlisted IPs;
 		 * - when the site key or the secret key is empty (after first plugin activation).
 		 */
 		$deactivate = (
 			( is_user_logged_in() && $settings->is_on( 'off_when_logged_in' ) ) ||
 			/**
-			 * Filters the user IP to check whether it is whitelisted.
+			 * Filters the user IP to check whether it is allowlisted.
 			 *
-			 * @param bool         $whitelisted IP is whitelisted.
+			 * @param bool         $allowlisted IP is allowlisted.
 			 * @param string|false $ip          IP string or false for local addresses.
 			 */
 			apply_filters( 'hcap_whitelist_ip', false, hcap_get_user_ip() ) ||
@@ -326,7 +342,12 @@ class Main {
 	public function prefetch_hcaptcha_dns( $urls, string $relation_type ): array {
 		$urls = (array) $urls;
 
-		if ( 'dns-prefetch' === $relation_type ) {
+		/**
+		 * Filters whether to print hCaptcha scripts.
+		 *
+		 * @param bool $status Current print status.
+		 */
+		if ( ( 'dns-prefetch' === $relation_type ) && apply_filters( 'hcap_print_hcaptcha_scripts', true ) ) {
 			$urls[] = 'https://hcaptcha.com';
 		}
 
@@ -437,14 +458,25 @@ class Main {
 	 *
 	 * @return void
 	 * @noinspection CssUnusedSymbol
+	 * @noinspection CssUnknownTarget
 	 */
 	public function print_inline_styles(): void {
+		/**
+		 * Filters whether to print hCaptcha scripts.
+		 *
+		 * @param bool $status Current print status.
+		 */
+		if ( ! apply_filters( 'hcap_print_hcaptcha_scripts', true ) ) {
+			return;
+		}
+
 		$settings           = $this->settings();
 		$div_logo_url       = HCAPTCHA_URL . '/assets/images/hcaptcha-div-logo.svg';
 		$div_logo_white_url = HCAPTCHA_URL . '/assets/images/hcaptcha-div-logo-white.svg';
 		$bg                 = $settings->get_custom_theme_background() ?: 'initial';
 
-		$css = <<<CSS
+		/* language=CSS */
+		$css = '
 	.h-captcha {
 		position: relative;
 		display: block;
@@ -468,12 +500,12 @@ class Main {
 	}
 
 	.h-captcha::before {
-		content: '';
+		content: \'\';
 		display: block;
 		position: absolute;
 		top: 0;
 		left: 0;
-		background: url( $div_logo_url ) no-repeat;
+		background: url( ' . $div_logo_url . ' ) no-repeat;
 		border: 1px solid transparent;
 		border-radius: 4px;
 	}
@@ -501,14 +533,23 @@ class Main {
 	body.is-dark-theme .h-captcha[data-theme="auto"]::before,
 	html.wp-dark-mode-active .h-captcha[data-theme="auto"]::before,
 	html.drdt-dark-mode .h-captcha[data-theme="auto"]::before {
-		background-image: url( $div_logo_white_url );
+		background-image: url( ' . $div_logo_white_url . ' );
 		background-repeat: no-repeat;
 		background-color: #333;
 		border: 1px solid #f5f5f5;
 	}
 
+	@media (prefers-color-scheme: dark) {
+		.h-captcha[data-theme="auto"]::before {
+			background-image: url( ' . $div_logo_white_url . ' );
+			background-repeat: no-repeat;
+			background-color: #333;
+			border: 1px solid #f5f5f5;			
+		}
+	}
+
 	.h-captcha[data-theme="custom"]::before {
-		background-color: $bg;
+		background-color: ' . $bg . ';
 	}
 
 	.h-captcha[data-size="invisible"]::before {
@@ -522,7 +563,7 @@ class Main {
 	div[style*="z-index: 2147483647"] div[style*="border-width: 11px"][style*="position: absolute"][style*="pointer-events: none"] {
 		border-style: none;
 	}
-CSS;
+';
 
 		HCaptcha::css_display( $css );
 	}
@@ -534,7 +575,17 @@ CSS;
 	 * @noinspection CssUnusedSymbol
 	 */
 	public function login_head(): void {
-		$css = <<<'CSS'
+		/**
+		 * Filters whether to print hCaptcha scripts.
+		 *
+		 * @param bool $status Current print status.
+		 */
+		if ( ! apply_filters( 'hcap_print_hcaptcha_scripts', true ) ) {
+			return;
+		}
+
+		/* language=CSS */
+		$css = '
 	@media (max-width: 349px) {
 		.h-captcha {
 			display: flex;
@@ -552,7 +603,7 @@ CSS;
 			box-sizing: content-box;
 		}
 	}
-CSS;
+';
 
 		HCaptcha::css_display( $css );
 	}
@@ -587,7 +638,7 @@ CSS;
 	private function force_https( string $host ): string {
 		$host = preg_replace( '#(http|https)://#', '', $host );
 
-		// We need to add scheme here, otherwise wp_parse_url returns null.
+		// We need to add a scheme here, otherwise wp_parse_url returns null.
 		$host = (string) wp_parse_url( 'https://' . $host, PHP_URL_HOST );
 
 		return 'https://' . $host;
@@ -752,21 +803,21 @@ CSS;
 	public function declare_wc_compatibility(): void {
 		// @codeCoverageIgnoreStart
 		if ( class_exists( FeaturesUtil::class ) ) {
-			FeaturesUtil::declare_compatibility( 'custom_order_tables', constant( 'HCAPTCHA_FILE' ), true );
+			FeaturesUtil::declare_compatibility( 'custom_order_tables', constant( 'HCAPTCHA_FILE' ) );
 		}
 		// @codeCoverageIgnoreEnd
 	}
 
 	/**
-	 * Filter user IP to check if it is whitelisted.
-	 * For whitelisted IPs, hCaptcha will not be shown.
+	 * Filter user IP to check if it is allowlisted.
+	 * For allowlisted IPs, hCaptcha will not be shown.
 	 *
-	 * @param bool|mixed   $whitelisted Whether IP is whitelisted.
+	 * @param bool|mixed   $allowlisted Whether IP is allowlisted.
 	 * @param string|false $client_ip   Client IP.
 	 *
 	 * @return bool|mixed
 	 */
-	public function whitelist_ip( $whitelisted, $client_ip ) {
+	public function allowlist_ip( $allowlisted, $client_ip ) {
 		$ips = explode(
 			"\n",
 			$this->settings()->get( 'whitelisted_ips' )
@@ -801,7 +852,7 @@ CSS;
 			return true;
 		}
 
-		return $whitelisted;
+		return $allowlisted;
 	}
 
 	/**
@@ -842,7 +893,7 @@ CSS;
 			'Post/Page Password Form'              => [
 				[ 'wp_status', 'password_protected' ],
 				'',
-				PasswordProtected::class,
+				WP\PasswordProtected::class,
 			],
 			'Register Form'                        => [
 				[ 'wp_status', 'register' ],
@@ -972,7 +1023,7 @@ CSS;
 			'Contact Form 7'                       => [
 				[ 'cf7_status', null ],
 				'contact-form-7/wp-contact-form-7.php',
-				[ CF7::class, Admin::class ],
+				[ CF7::class, Admin::class, ReallySimpleCaptcha::class ],
 			],
 			'Cookies and Content Security Policy'  => [
 				[ 'cacsp_status', null ],
@@ -1068,6 +1119,11 @@ CSS;
 				[ 'essential_blocks_status', 'form' ],
 				'essential-blocks/essential-blocks.php',
 				EssentialBlocks\Form::class,
+			],
+			'Events Manager'                       => [
+				[ 'events_manager_status', 'booking' ],
+				'events-manager/events-manager.php',
+				Booking::class,
 			],
 			'Extra Comment Form'                   => [
 				[ 'extra_status', 'comment' ],
@@ -1223,6 +1279,11 @@ CSS;
 				[ 'passster_status', 'protect' ],
 				'content-protector/content-protector.php',
 				Passster\Protect::class,
+			],
+			'Password Protected Protect'           => [
+				[ 'password_protected_status', 'protect' ],
+				'password-protected/password-protected.php',
+				PasswordProtected\Protect::class,
 			],
 			'Profile Builder Login'                => [
 				[ 'profile_builder_status', 'login' ],
@@ -1490,20 +1551,17 @@ CSS;
 
 	/**
 	 * Is plugin active.
-	 * When network wide activated, check if the plugin is network active.
+	 * When network is widely activated, check if the plugin is network active.
 	 *
 	 * @param string $plugin_name Plugin name.
 	 *
 	 * @return bool
 	 */
 	public function is_plugin_active( string $plugin_name ): bool {
-		if ( is_multisite() ) {
-			$tab          = $this->settings->get_tab( Integrations::class );
-			$network_wide = $tab && $tab->is_network_wide();
-
-			if ( $network_wide ) {
-				return is_plugin_active_for_network( $plugin_name );
-			}
+		if ( $this->is_network_wide() ) {
+			// @codeCoverageIgnoreStart
+			return is_plugin_active_for_network( $plugin_name );
+			// @codeCoverageIgnoreEnd
 		}
 
 		return is_plugin_active( $plugin_name );
@@ -1521,5 +1579,22 @@ CSS;
 			false,
 			dirname( plugin_basename( HCAPTCHA_FILE ) ) . '/languages/'
 		);
+	}
+
+	/**
+	 * Determines if hCaptcha settings are defined network-wide.
+	 *
+	 * @return bool
+	 */
+	protected function is_network_wide(): bool {
+		// @codeCoverageIgnoreStart
+		if ( ! is_multisite() ) {
+			return false;
+		}
+
+		$tab = $this->settings->get_tab( Integrations::class );
+
+		return $tab && $tab->is_network_wide();
+		// @codeCoverageIgnoreEnd
 	}
 }

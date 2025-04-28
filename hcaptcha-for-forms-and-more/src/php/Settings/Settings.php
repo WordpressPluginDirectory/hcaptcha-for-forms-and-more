@@ -6,7 +6,6 @@
  */
 
 // phpcs:ignore Generic.Commenting.DocComment.MissingShort
-/** @noinspection ContractViolationInspection */
 
 namespace HCaptcha\Settings;
 
@@ -123,6 +122,15 @@ class Settings implements SettingsInterface {
 		$first_tab = $this->tabs[0] ?? null;
 
 		return $first_tab ? $first_tab->get_active_tab()->tab_name() : '';
+	}
+
+	/**
+	 * Get plugin name.
+	 *
+	 * @return string
+	 */
+	public function get_plugin_name(): string {
+		return 'hCaptcha for WP';
 	}
 
 	/**

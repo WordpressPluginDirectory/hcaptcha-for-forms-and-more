@@ -14,24 +14,28 @@ namespace HCaptcha\FluentForm;
 
 use FluentForm\App\Models\Form as FluentForm;
 use FluentForm\App\Modules\Form\FormFieldsParser;
+use FluentForm\Framework\Helpers\ArrayHelper;
+use HCaptcha\Abstracts\LoginBase;
 use HCaptcha\Helpers\HCaptcha;
 use HCaptcha\Main;
 use stdClass;
 
 /**
  * Class Form
+ *
+ * Can be used as a login form also.
  */
-class Form {
+class Form extends LoginBase {
 
 	/**
 	 * Nonce action.
 	 */
-	private const ACTION = 'hcaptcha_fluentform';
+	protected const ACTION = 'hcaptcha_fluentform';
 
 	/**
 	 * Nonce name.
 	 */
-	private const NONCE = 'hcaptcha_fluentform_nonce';
+	protected const NONCE = 'hcaptcha_fluentform_nonce';
 
 	/**
 	 * Script handle.
@@ -49,6 +53,11 @@ class Form {
 	private const OBJECT = 'HCaptchaFluentFormObject';
 
 	/**
+	 * Fluent Forms conversational script handle.
+	 */
+	private const FLUENT_FORMS_CONVERSATIONAL_HANDLE = 'fluent_forms_conversational_form';
+
+	/**
 	 * Conversational form id.
 	 *
 	 * @var int
@@ -56,27 +65,47 @@ class Form {
 	protected $form_id = 0;
 
 	/**
-	 * Constructor.
-	 */
-	public function __construct() {
-		$this->init_hooks();
-	}
-
-	/**
 	 * Init hooks.
 	 *
 	 * @return void
 	 */
-	private function init_hooks(): void {
+	protected function init_hooks(): void {
+		add_filter( 'pre_option', [ $this, 'pre_option' ], 10, 3 );
 		add_filter( 'fluentform/rendering_field_html_hcaptcha', [ $this, 'render_field_hcaptcha' ], 10, 3 );
 		add_action( 'fluentform/render_item_submit_button', [ $this, 'add_hcaptcha' ], 9, 2 );
 		add_action( 'fluentform/validation_errors', [ $this, 'verify' ], 10, 4 );
 		add_filter( 'fluentform/rendering_form', [ $this, 'fluentform_rendering_form_filter' ] );
 		add_filter( 'fluentform/has_hcaptcha', [ $this, 'fluentform_has_hcaptcha' ] );
-		add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ] );
-		add_action( 'wp_print_footer_scripts', [ $this, 'enqueue_scripts' ], 9 );
+		add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ], 0 );
+		add_action( 'wp_print_footer_scripts', [ $this, 'print_footer_scripts' ], 9 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'admin_enqueue_scripts' ] );
 		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
+	}
+
+	/**
+	 * Filters the value of an existing option before it is retrieved.
+	 *
+	 * @param mixed        $pre_option    The value to return instead of the option value.
+	 * @param string|mixed $option        Option name.
+	 * @param mixed        $default_value The fallback value to return if the option does not exist.
+	 *
+	 * @return mixed
+	 *
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function pre_option( $pre_option, $option, $default_value ) {
+		if ( '_fluentform_hCaptcha_details' === $option ) {
+			return [
+				'siteKey'   => hcaptcha()->settings()->get_site_key(),
+				'secretKey' => hcaptcha()->settings()->get_secret_key(),
+			];
+		}
+
+		if ( '_fluentform_hCaptcha_keys_status' === $option ) {
+			return '1';
+		}
+
+		return $pre_option;
 	}
 
 	/**
@@ -112,7 +141,7 @@ class Form {
 			return;
 		}
 
-		$this->form_id = (int) $form->id;
+		$this->form_id = (int) ( $form->id ?? 0 );
 
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo $this->get_hcaptcha_wrapped();
@@ -130,6 +159,29 @@ class Form {
 	 * @noinspection PhpUnusedParameterInspection
 	 */
 	public function verify( array $errors, array $data, FluentForm $form, array $fields ): array {
+		if ( $this->is_login_form( $form ) ) {
+			$email    = (string) ArrayHelper::get( $data, 'email' );
+			$password = (string) ArrayHelper::get( $data, 'password' );
+			$user     = get_user_by( 'email', $email );
+
+			if ( $user && wp_check_password( $password, $user->user_pass, $user->ID ) ) {
+				$this->login( $email, $user );
+			} else {
+				$this->login_failed( $email );
+			}
+
+			if ( ! $this->is_login_limit_exceeded() ) {
+				return $errors;
+			}
+
+			wp_send_json(
+				__( 'Login failed. Please reload the page.', 'hcaptcha-for-forms-and-more' ),
+				423
+			);
+
+			return $errors; // For testing purposes.
+		}
+
 		remove_filter( 'pre_http_request', [ $this, 'pre_http_request' ] );
 
 		$hcaptcha_response           = $data['h-captcha-response'] ?? '';
@@ -144,8 +196,7 @@ class Form {
 	}
 
 	/**
-	 * Filter print hCaptcha scripts status and return true, so, always run hCaptcha scripts.
-	 * Form can have own hCaptcha field, or we add hCaptcha automatically.
+	 * Filter print hCaptcha scripts status.
 	 *
 	 * @param bool|mixed $status Print scripts status.
 	 *
@@ -157,21 +208,24 @@ class Form {
 		wp_dequeue_script( 'hcaptcha' );
 		wp_deregister_script( 'hcaptcha' );
 
-		return true;
+		// Always run hCaptcha main script with conversational forms.
+		if ( wp_script_is( self::FLUENT_FORMS_CONVERSATIONAL_HANDLE ) ) {
+			return true;
+		}
+
+		return $status;
 	}
 
 	/**
-	 * Enqueue scripts.
+	 * Print footer scripts.
 	 *
 	 * @return void
 	 */
-	public function enqueue_scripts(): void {
+	public function print_footer_scripts(): void {
 		global $wp_scripts;
 
-		$fluent_forms_conversational_script = 'fluent_forms_conversational_form';
-
 		// Proceed with conversational form only.
-		if ( ! wp_script_is( $fluent_forms_conversational_script ) ) {
+		if ( ! wp_script_is( self::FLUENT_FORMS_CONVERSATIONAL_HANDLE ) ) {
 			return;
 		}
 
@@ -189,33 +243,24 @@ class Form {
 			self::HANDLE,
 			self::OBJECT,
 			[
-				'id'  => 'fluent_forms_conversational_form',
-				'url' => $wp_scripts->registered[ $fluent_forms_conversational_script ]->src,
+				'id'  => self::FLUENT_FORMS_CONVERSATIONAL_HANDLE,
+				'url' => $wp_scripts->registered[ self::FLUENT_FORMS_CONVERSATIONAL_HANDLE ]->src,
 			]
 		);
 
 		// Print localization data of conversational script.
-		$wp_scripts->print_extra_script( $fluent_forms_conversational_script );
+		$wp_scripts->print_extra_script( self::FLUENT_FORMS_CONVERSATIONAL_HANDLE );
 
 		// Remove a localization script. We will launch it from our HANDLE script on hCaptchaLoaded event.
-		wp_dequeue_script( $fluent_forms_conversational_script );
-		wp_deregister_script( $fluent_forms_conversational_script );
+		wp_dequeue_script( self::FLUENT_FORMS_CONVERSATIONAL_HANDLE );
+		wp_deregister_script( self::FLUENT_FORMS_CONVERSATIONAL_HANDLE );
 
-		$form = $this->get_captcha();
-		$form = str_replace(
-			[
-				'class="h-captcha"',
-				'class="hcaptcha-widget-id"',
-			],
-			[
-				'class="h-captcha-hidden" style="display: none;"',
-				'class="h-captcha-hidden hcaptcha-widget-id"',
-			],
-			$form
-		);
+		$hcap_form = $this->get_hcaptcha();
+		$hcap_form = str_replace( 'class="h-captcha"', 'class=""', $hcap_form );
+		$hcap_form = '<div class="h-captcha-hidden" style="display: none;">' . "\n$hcap_form\n</div>";
 
 		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-		echo $form;
+		echo $hcap_form;
 	}
 
 	/**
@@ -306,6 +351,7 @@ class Form {
 	 */
 	public function fluentform_has_hcaptcha(): bool {
 		add_filter( 'pre_http_request', [ $this, 'pre_http_request' ], 10, 3 );
+
 		return false;
 	}
 
@@ -348,16 +394,16 @@ class Form {
 	 * @noinspection CssUnusedSymbol
 	 */
 	public function print_inline_styles(): void {
-		$css = <<<CSS
+		/* language=CSS */
+		$css = '
 	.frm-fluent-form .h-captcha {
 		line-height: 0;
 		margin-bottom: 0;
 	}
-CSS;
+';
 
 		HCaptcha::css_display( $css );
 	}
-
 
 	/**
 	 * Whether the form has its own hcaptcha set in admin.
@@ -367,13 +413,7 @@ CSS;
 	 * @return bool
 	 */
 	protected function has_own_hcaptcha( $form ): bool {
-		FormFieldsParser::resetData();
-
-		if ( FormFieldsParser::hasElement( $form, 'hcaptcha' ) ) {
-			return true;
-		}
-
-		return false;
+		return $this->has_element( $form, 'hcaptcha' );
 	}
 
 	/**
@@ -381,7 +421,13 @@ CSS;
 	 *
 	 * @return string
 	 */
-	private function get_captcha(): string {
+	protected function get_hcaptcha(): string {
+		$form = FluentForm::find( $this->form_id );
+
+		if ( $this->is_login_form( $form ) && ! $this->is_login_limit_exceeded() ) {
+			return '';
+		}
+
 		$args = [
 			'action' => self::ACTION,
 			'name'   => self::NONCE,
@@ -395,6 +441,36 @@ CSS;
 	}
 
 	/**
+	 * Whether the form is a login form.
+	 *
+	 * @param FluentForm|stdClass $form Form.
+	 *
+	 * @return bool
+	 */
+	protected function is_login_form( $form ): bool {
+
+		return (
+			has_action( 'fluentform/before_insert_submission' ) &&
+			$this->has_element( $form, 'input_email' ) &&
+			$this->has_element( $form, 'input_password' )
+		);
+	}
+
+	/**
+	 * Whether the form has an element.
+	 *
+	 * @param FluentForm|stdClass $form         Form.
+	 * @param string              $element_name Element name.
+	 *
+	 * @return bool
+	 */
+	private function has_element( $form, string $element_name ): bool {
+		FormFieldsParser::resetData();
+
+		return FormFieldsParser::hasElement( $form, $element_name );
+	}
+
+	/**
 	 * Get hCaptcha wrapped as Fluent Forms field.
 	 *
 	 * @return string
@@ -402,13 +478,14 @@ CSS;
 	private function get_hcaptcha_wrapped(): string {
 		ob_start();
 
+		/* language=HTML */
 		?>
 		<div class="ff-el-group">
 			<div class="ff-el-input--content">
 				<div data-fluent_id="1" name="h-captcha-response">
 					<?php
 					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
-					echo $this->get_captcha();
+					echo $this->get_hcaptcha();
 					?>
 				</div>
 			</div>

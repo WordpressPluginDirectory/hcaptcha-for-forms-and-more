@@ -70,7 +70,7 @@ class Form {
 
 		if ( $this->mode_embed ) {
 			add_filter( 'wpforms_admin_settings_captcha_enqueues_disable', [ $this, 'wpforms_admin_settings_captcha_enqueues_disable' ] );
-			add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'hcap_print_hcaptcha_scripts' ] );
+			add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'hcap_print_hcaptcha_scripts' ], 0 );
 			add_filter( 'wpforms_settings_fields', [ $this, 'wpforms_settings_fields' ], 10, 2 );
 		}
 
@@ -125,7 +125,8 @@ class Form {
 	 * @noinspection CssUnusedSymbol
 	 */
 	public function print_inline_styles(): void {
-		$css = <<<CSS
+		/* language=CSS */
+		$css = '
 	div.wpforms-container-full .wpforms-form .h-captcha {
 		position: relative;
 		display: block;
@@ -151,7 +152,7 @@ class Form {
 	div.wpforms-container-full .wpforms-form .h-captcha iframe {
 		position: relative;
 	}
-CSS;
+';
 
 		HCaptcha::css_display( $css );
 	}
@@ -196,7 +197,7 @@ CSS;
 		}
 
 		if ( isset( $fields['hcaptcha-heading'] ) ) {
-			$notice_content = <<<HTML
+			$notice_content = '
 <div
 		id="wpforms-setting-row-hcaptcha-heading"
 		class="wpforms-setting-row wpforms-setting-row-content wpforms-clear section-heading specific-note">
@@ -208,13 +209,13 @@ CSS;
 				</svg>
 			</div>
 			<div class="wpforms-specific-note-content">
-				<p><strong>$label</strong></p>
-				<p>$description</p>
+				<p><strong>' . $label . '</strong></p>
+				<p>' . $description . '</p>
 			</div>
 		</div>
 	</span>
 </div>
-HTML;
+';
 
 			$fields['hcaptcha-heading'] .= $notice_content;
 		}
