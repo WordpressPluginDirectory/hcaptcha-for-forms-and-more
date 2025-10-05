@@ -1,6 +1,6 @@
 <?php
 /**
- * Request class' file.
+ * The 'Request' class file.
  *
  * @package hcaptcha-wp
  */
@@ -58,12 +58,12 @@ class Request {
 	/**
 	 * Checks if the current request is a WP REST API request.
 	 *
-	 * Case #1: After WP_REST_Request initialisation
+	 * Case #1: After WP_REST_Request initialization
 	 * Case #2: Support "plain" permalink settings
 	 * Case #3: It can happen that WP_Rewrite is not yet initialized,
 	 *          so do this (wp-settings.php)
 	 * Case #4: URL Path begins with wp-json/ (your REST prefix)
-	 *          Also supports WP installations in sub folders
+	 *          Also supports WP installations in subfolders
 	 *
 	 * @return bool
 	 * @author matzeeable
@@ -96,7 +96,7 @@ class Request {
 		}
 
 		// Case #4.
-		$current_url = wp_parse_url( add_query_arg( [] ), PHP_URL_PATH );
+		$current_url = (string) wp_parse_url( add_query_arg( [] ), PHP_URL_PATH );
 		$rest_url    = wp_parse_url( trailingslashit( rest_url() ), PHP_URL_PATH );
 
 		return 0 === strpos( $current_url, $rest_url );
@@ -139,5 +139,96 @@ class Request {
 			default:
 				return '';
 		}
+	}
+
+	/**
+	 * Check if an IP is in a given range.
+	 *
+	 * @param string $ip    IP address.
+	 * @param string $range IP range.
+	 *
+	 * @return bool
+	 */
+	public static function is_ip_in_range( string $ip, string $range ): bool {
+		$ip    = trim( $ip );
+		$range = trim( $range );
+
+		if ( strpos( $range, '/' ) !== false ) {
+			// CIDR range.
+			[ $subnet, $bits ] = explode( '/', $range );
+
+			$bits = (int) $bits;
+
+			// phpcs:disable WordPress.PHP.NoSilencedErrors.Discouraged
+			$ip_bin     = @inet_pton( $ip );
+			$subnet_bin = @inet_pton( $subnet );
+			// phpcs:enable WordPress.PHP.NoSilencedErrors.Discouraged
+
+			if ( false === $ip_bin || false === $subnet_bin || strlen( $ip_bin ) !== strlen( $subnet_bin ) ) {
+				return false;
+			}
+
+			$max_bits = strlen( $ip_bin ) * 8;
+
+			if ( $bits < 0 || $bits > $max_bits ) {
+				return false;
+			}
+
+			// Build mask.
+			$mask = str_repeat( "\xff", intdiv( $bits, 8 ) );
+
+			if ( $bits % 8 ) {
+				$mask .= chr( ( 0xff << ( 8 - $bits % 8 ) ) & 0xff );
+			}
+
+			$ip_bin_len = strlen( $ip_bin );
+			$mask       = str_pad( $mask, $ip_bin_len, "\0" );
+
+			// Apply mask and check equality.
+			for ( $i = 0; $i < $ip_bin_len; $i++ ) {
+				$mask_ord = ord( $mask[ $i ] );
+
+				if ( ( ord( $ip_bin[ $i ] ) & $mask_ord ) !== ( ord( $subnet_bin[ $i ] ) & $mask_ord ) ) {
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		if ( strpos( $range, '-' ) !== false ) {
+			// IP-IP range.
+			[ $start, $end ] = explode( '-', $range, 2 );
+
+			// phpcs:disable WordPress.PHP.NoSilencedErrors.Discouraged
+			$start_dec = @inet_pton( trim( $start ) );
+			$end_dec   = @inet_pton( trim( $end ) );
+			$ip_dec    = @inet_pton( $ip );
+			// phpcs:enable WordPress.PHP.NoSilencedErrors.Discouraged
+
+			return ( $ip_dec >= $start_dec && $ip_dec <= $end_dec );
+		}
+
+		// Single IP.
+		return ( $ip === $range ) && filter_var( $range, FILTER_VALIDATE_IP );
+	}
+
+	/**
+	 * Get the current URL.
+	 *
+	 * @return string
+	 */
+	public static function current_url(): string {
+		$parsed_home_url = wp_parse_url( home_url() );
+
+		$url = $parsed_home_url['scheme'] . '://' . $parsed_home_url['host'];
+
+		if ( ! empty( $parsed_home_url['port'] ) ) {
+			$url .= ':' . $parsed_home_url['port'];
+		}
+
+		$url .= self::filter_input( INPUT_SERVER, 'REQUEST_URI' );
+
+		return sanitize_url( $url );
 	}
 }

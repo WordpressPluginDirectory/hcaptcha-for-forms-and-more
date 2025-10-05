@@ -5,7 +5,12 @@
  * @package hcaptcha-wp
  */
 
+// phpcs:ignore Generic.Commenting.DocComment.MissingShort
+/** @noinspection PhpUndefinedClassInspection */
+
 namespace HCaptcha\Admin;
+
+use ElementorPro\Plugin;
 
 /**
  * Class Notifications.
@@ -45,13 +50,6 @@ class Notifications extends NotificationsBase {
 	 * @var array
 	 */
 	protected $notifications = [];
-
-	/**
-	 * Shuffle notifications.
-	 *
-	 * @var bool
-	 */
-	protected $shuffle = true;
 
 	/**
 	 * Init class.
@@ -267,7 +265,7 @@ class Notifications extends NotificationsBase {
 					)
 				),
 				'button'  => [
-					'url'      => $urls['passive_mode_example'],
+					'url'      => $urls['passive_mode_demo'],
 					'text'     => __( 'See an example', 'hcaptcha-for-forms-and-more' ),
 					'lightbox' => true,
 				],
@@ -276,7 +274,7 @@ class Notifications extends NotificationsBase {
 			'protect-content'     => [
 				'title'   => __( 'Protect Site Content', 'hcaptcha-for-forms-and-more' ),
 				'message' => sprintf(
-				/* translators: 1: Pro link. */
+				/* translators: 1: the protect switch link, 2: Pro link. */
 					__( '%1$s selected site URLs from bots with hCaptcha. Works best with %2$s 99.9%% passive mode.', 'hcaptcha-for-forms-and-more' ),
 					sprintf(
 						'<a href="%1$s" target="_blank">%2$s</a>',
@@ -290,44 +288,48 @@ class Notifications extends NotificationsBase {
 					)
 				),
 				'button'  => [
-					'url'      => $urls['protect_content_example'],
+					'url'      => $urls['protect_content_demo'],
 					'text'     => __( 'See an example', 'hcaptcha-for-forms-and-more' ),
 					'lightbox' => true,
 				],
 			],
+			// Added in 4.18.0.
+			'antispam-token'      => [
+				'title'   => __( 'Anti-Spam Token', 'hcaptcha-for-forms-and-more' ),
+				'message' => sprintf(
+				/* translators: 1: the submit time switch link. */
+					__( 'Add minimum form %1$s for bot detection before processing hCaptcha.', 'hcaptcha-for-forms-and-more' ),
+					sprintf(
+						'<a href="%1$s" target="_blank">%2$s</a>',
+						$urls['token'],
+						__( 'submit time', 'hcaptcha-for-forms-and-more' )
+					)
+				),
+				'button'  => [
+					'url'  => $urls['token'],
+					'text' => __( 'Turn on minimum submit time', 'hcaptcha-for-forms-and-more' ),
+				],
+			],
+			// Added in 4.18.0.
+			'antispam-honeypot'   => [
+				'title'   => __( 'Anti-Spam Honeypot', 'hcaptcha-for-forms-and-more' ),
+				'message' => sprintf(
+				/* translators: 1: the honeypot switch link. */
+					__( 'Add a hidden %1$s field for bot detection before processing hCaptcha.', 'hcaptcha-for-forms-and-more' ),
+					sprintf(
+						'<a href="%1$s" target="_blank">%2$s</a>',
+						$urls['honeypot'],
+						__( 'honeypot', 'hcaptcha-for-forms-and-more' )
+					)
+				),
+				'button'  => [
+					'url'  => $urls['honeypot'],
+					'text' => __( 'Turn on honeypot', 'hcaptcha-for-forms-and-more' ),
+				],
+			],
 		];
 
-		if ( ! empty( $settings->get_site_key() ) && ! empty( $settings->get_secret_key() ) ) {
-			unset( $notifications['register'] );
-		}
-
-		if ( $settings->is_pro() ) {
-			unset( $notifications['pro-free-trial'] );
-		}
-
-		if ( $settings->is_on( 'statistics' ) ) {
-			unset( $notifications['statistics'] );
-		}
-
-		if ( $settings->is_on( 'statistics' ) && $settings->is_pro() ) {
-			unset( $notifications['events_page'] );
-		}
-
-		if ( $settings->is_on( 'force' ) ) {
-			unset( $notifications['force'] );
-		}
-
-		if ( ! class_exists( '\ElementorPro\Plugin', false ) ) {
-			unset( $notifications['admin-elementor'] );
-		}
-
-		if ( $settings->is_pro() && $settings->is( 'size', 'invisible' ) ) {
-			unset( $notifications['passive-mode'] );
-		}
-
-		if ( $settings->is_on( 'protect_content' ) ) {
-			unset( $notifications['protect-content'] );
-		}
+		$notifications = $this->select_active_notifications( $notifications );
 
 		// Added in 4.4.0.
 		return array_merge( $notifications, $this->cf7_admin_notification() );
@@ -397,17 +399,27 @@ class Notifications extends NotificationsBase {
 			</div>
 			<?php
 
-			if ( $this->shuffle ) {
+			/**
+			 * Filter whether to shuffle notifications.
+			 *
+			 * @param bool $shuffle Whether to shuffle notifications.
+			 */
+			$shuffle = (bool) apply_filters( 'hcap_shuffle_notifications', true );
+
+			if ( $shuffle ) {
 				$notifications = $this->shuffle_assoc( $notifications );
 				$notifications = $this->make_key_first( $notifications, 'register' );
+			} else {
+				$notifications = array_reverse( $notifications );
 			}
 
 			foreach ( $notifications as $id => $notification ) {
-				$title           = $notification['title'] ?: '';
-				$message         = $notification['message'] ?? '';
-				$button_url      = $notification['button']['url'] ?? '';
-				$button_text     = $notification['button']['text'] ?? '';
-				$button_lightbox = $notification['button']['lightbox'] ?? '';
+				$notification    = $this->validate_notification( (array) $notification );
+				$title           = $notification['title'];
+				$message         = $notification['message'];
+				$button_url      = $notification['button']['url'];
+				$button_text     = $notification['button']['text'];
+				$button_lightbox = $notification['button']['lightbox'];
 				$button          = '';
 
 				if ( $button_url && $button_text ) {
@@ -428,7 +440,7 @@ class Notifications extends NotificationsBase {
 					$button = ob_get_clean();
 				}
 
-				// We need 'inline' class below to prevent moving the 'notice' div after h2 by common.js script in WP Core.
+				// We need the 'inline' class below to prevent moving the 'notice' div after h2 by common.js script in WP Core.
 				?>
 				<div
 						class="hcaptcha-notification notice notice-info is-dismissible inline"
@@ -452,8 +464,8 @@ class Notifications extends NotificationsBase {
 						<?php esc_html_e( 'of', 'hcaptcha-for-forms-and-more' ); ?>
 						<span id="hcaptcha-navigation-pages"><?php echo count( $notifications ); ?></span>
 					</span>
-					<a class="prev disabled"></a>
-					<a class="next <?php echo esc_attr( $next_disabled ); ?>"></a>
+					<a class="prev button disabled"></a>
+					<a class="next button <?php echo esc_attr( $next_disabled ); ?>"></a>
 				</div>
 			</div>
 		</div>
@@ -624,5 +636,71 @@ class Notifications extends NotificationsBase {
 
 		// Merge the key-value pair back into the array at the beginning.
 		return array_merge( [ $key => $value ], $arr );
+	}
+
+	/**
+	 * Validate notification.
+	 *
+	 * @param array $notification Notification.
+	 *
+	 * @return mixed
+	 */
+	private function validate_notification( array $notification ): array {
+		$notification['title']              = $notification['title'] ?: '';
+		$notification['message']            = $notification['message'] ?? '';
+		$notification['button']['url']      = $notification['button']['url'] ?? '';
+		$notification['button']['text']     = $notification['button']['text'] ?? '';
+		$notification['button']['lightbox'] = $notification['button']['lightbox'] ?? '';
+
+		return $notification;
+	}
+
+	/**
+	 * Select active notifications.
+	 *
+	 * @param array $notifications Notifications.
+	 *
+	 * @return array
+	 */
+	private function select_active_notifications( array $notifications ): array {
+		$settings = hcaptcha()->settings();
+
+		// Key: option name, value: notification id.
+		$settings_map = [
+			'statistics'          => 'statistics',
+			'force'               => 'force',
+			'protect_content'     => 'protect-content',
+			'antispam'            => 'antispam',
+			'set_min_submit_time' => 'antispam-token',
+			'honeypot'            => 'antispam-honeypot',
+		];
+
+		foreach ( $settings_map as $option => $notification_id ) {
+			if ( $settings->is_on( $option ) ) {
+				unset( $notifications[ $notification_id ] );
+			}
+		}
+
+		if ( ! empty( $settings->get_site_key() ) && ! empty( $settings->get_secret_key() ) ) {
+			unset( $notifications['register'] );
+		}
+
+		if ( $settings->is_pro() ) {
+			unset( $notifications['pro-free-trial'] );
+		}
+
+		if ( $settings->is_pro() && $settings->is_on( 'statistics' ) ) {
+			unset( $notifications['events_page'] );
+		}
+
+		if ( ! class_exists( Plugin::class, false ) ) {
+			unset( $notifications['admin-elementor'] );
+		}
+
+		if ( $settings->is_pro() && $settings->is( 'size', 'invisible' ) ) {
+			unset( $notifications['passive-mode'] );
+		}
+
+		return $notifications;
 	}
 }

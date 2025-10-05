@@ -1,6 +1,6 @@
 <?php
 /**
- * Form class file.
+ * 'Form' class file.
  *
  * @package hcaptcha-wp
  */
@@ -16,7 +16,9 @@ use FluentForm\App\Models\Form as FluentForm;
 use FluentForm\App\Modules\Form\FormFieldsParser;
 use FluentForm\Framework\Helpers\ArrayHelper;
 use HCaptcha\Abstracts\LoginBase;
+use HCaptcha\Helpers\API;
 use HCaptcha\Helpers\HCaptcha;
+use HCaptcha\Helpers\Request;
 use HCaptcha\Main;
 use stdClass;
 
@@ -78,6 +80,7 @@ class Form extends LoginBase {
 		add_filter( 'fluentform/has_hcaptcha', [ $this, 'fluentform_has_hcaptcha' ] );
 		add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ], 0 );
 		add_action( 'wp_print_footer_scripts', [ $this, 'print_footer_scripts' ], 9 );
+		add_filter( 'script_loader_tag', [ $this, 'add_type_module' ], 10, 3 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'admin_enqueue_scripts' ] );
 		add_action( 'wp_head', [ $this, 'print_inline_styles' ], 20 );
 	}
@@ -120,9 +123,18 @@ class Form extends LoginBase {
 	 * @noinspection PhpUnusedParameterInspection
 	 */
 	public function render_field_hcaptcha( $html, array $data, stdClass $form ): string {
+		$html = (string) $html;
+
 		$this->form_id = (int) $form->id;
 
-		return $this->get_hcaptcha_wrapped();
+		$search = 'ff-el-input--content';
+		$html   = str_replace(
+			[ $search, "name='h-captcha-response'" ],
+			[ $search . ' ff-el-input--hcaptcha', '' ],
+			$html
+		);
+
+		return (string) preg_replace( '#<div\s*data-sitekey.*?</div>#s', $this->get_hcaptcha(), $html );
 	}
 
 	/**
@@ -157,6 +169,9 @@ class Form extends LoginBase {
 	 *
 	 * @return array
 	 * @noinspection PhpUnusedParameterInspection
+	 * @noinspection PhpUndefinedMethodInspection
+	 * @noinspection PhpCastIsUnnecessaryInspection
+	 * @noinspection UnnecessaryCastingInspection
 	 */
 	public function verify( array $errors, array $data, FluentForm $form, array $fields ): array {
 		if ( $this->is_login_form( $form ) ) {
@@ -173,23 +188,29 @@ class Form extends LoginBase {
 			if ( ! $this->is_login_limit_exceeded() ) {
 				return $errors;
 			}
-
-			wp_send_json(
-				__( 'Login failed. Please reload the page.', 'hcaptcha-for-forms-and-more' ),
-				423
-			);
-
-			return $errors; // For testing purposes.
 		}
 
 		remove_filter( 'pre_http_request', [ $this, 'pre_http_request' ] );
 
-		$hcaptcha_response           = $data['h-captcha-response'] ?? '';
-		$_POST['hcaptcha-widget-id'] = $data['hcaptcha-widget-id'] ?? '';
-		$error_message               = hcaptcha_request_verify( $hcaptcha_response );
+		$post_data_str = Request::filter_input( INPUT_POST, 'data' );
 
-		if ( null !== $error_message ) {
-			$errors['h-captcha-response'] = [ $error_message ];
+		wp_parse_str( $post_data_str, $post_data );
+
+		$post_data     = (array) $post_data; // The $post_data is filtered in the wp_parse_str() and can be anything.
+		$error_message = API::verify_post_data( self::NONCE, self::ACTION, $post_data );
+
+		if ( null === $error_message ) {
+			return $errors;
+		}
+
+		$errors['h-captcha-response'] = [ $error_message ];
+
+		$form_fields_json = $form->getAttributes()['form_fields'] ?? [];
+		$form_fields      = json_decode( $form_fields_json, true );
+		$multi_step       = isset( $form_fields['stepsWrapper'] );
+
+		if ( $multi_step ) {
+			wp_send_json_error( $errors );
 		}
 
 		return $errors;
@@ -204,9 +225,7 @@ class Form extends LoginBase {
 	 * @noinspection PhpUnusedParameterInspection
 	 */
 	public function print_hcaptcha_scripts( $status ): bool {
-		// Remove an API script by Fluent Forms, having the 'hcaptcha' handle.
-		wp_dequeue_script( 'hcaptcha' );
-		wp_deregister_script( 'hcaptcha' );
+		$this->remove_ff_hcaptcha();
 
 		// Always run hCaptcha main script with conversational forms.
 		if ( wp_script_is( self::FLUENT_FORMS_CONVERSATIONAL_HANDLE ) ) {
@@ -224,17 +243,12 @@ class Form extends LoginBase {
 	public function print_footer_scripts(): void {
 		global $wp_scripts;
 
-		// Proceed with conversational form only.
-		if ( ! wp_script_is( self::FLUENT_FORMS_CONVERSATIONAL_HANDLE ) ) {
-			return;
-		}
-
 		$min = hcap_min_suffix();
 
 		wp_enqueue_script(
 			self::HANDLE,
 			HCAPTCHA_URL . "/assets/js/hcaptcha-fluentform$min.js",
-			[ Main::HANDLE ],
+			[ 'jquery', Main::HANDLE ],
 			HCAPTCHA_VERSION,
 			true
 		);
@@ -300,6 +314,26 @@ class Form extends LoginBase {
 			[],
 			constant( 'HCAPTCHA_VERSION' )
 		);
+	}
+
+	/**
+	 * Add type="module" attribute to script tag.
+	 *
+	 * @param string|mixed $tag    Script tag.
+	 * @param string       $handle Script handle.
+	 * @param string       $src    Script source.
+	 *
+	 * @return string
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function add_type_module( $tag, string $handle, string $src ): string {
+		$tag = (string) $tag;
+
+		if ( self::HANDLE !== $handle ) {
+			return $tag;
+		}
+
+		return HCaptcha::add_type_module( $tag );
 	}
 
 	/**
@@ -400,6 +434,10 @@ class Form extends LoginBase {
 		line-height: 0;
 		margin-bottom: 0;
 	}
+	
+	.fluentform-step.active .ff-el-input--hcaptcha {
+		justify-self: end;
+	}
 ';
 
 		HCaptcha::css_display( $css );
@@ -471,7 +509,7 @@ class Form extends LoginBase {
 	}
 
 	/**
-	 * Get hCaptcha wrapped as Fluent Forms field.
+	 * Get hCaptcha wrapped as a Fluent Forms field.
 	 *
 	 * @return string
 	 */
@@ -481,7 +519,7 @@ class Form extends LoginBase {
 		/* language=HTML */
 		?>
 		<div class="ff-el-group">
-			<div class="ff-el-input--content">
+			<div class="ff-el-input--content ff-el-input--hcaptcha">
 				<div data-fluent_id="1" name="h-captcha-response">
 					<?php
 					// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
@@ -493,5 +531,30 @@ class Form extends LoginBase {
 		<?php
 
 		return ob_get_clean();
+	}
+
+	/**
+	 * Removes the hCaptcha API script enqueued by Fluent Forms.
+	 *
+	 * @return void
+	 */
+	private function remove_ff_hcaptcha(): void {
+		// Remove an API script by Fluent Forms, having the 'hcaptcha' handle.
+		$handle     = 'hcaptcha';
+		$wp_scripts = wp_scripts();
+		$script     = $wp_scripts->query( $handle );
+
+		if ( ! $script ) {
+			return;
+		}
+
+		$src = $script->src;
+
+		if ( false === strpos( $src, 'fluentform' ) ) {
+			return;
+		}
+
+		wp_dequeue_script( $handle );
+		wp_deregister_script( $handle );
 	}
 }

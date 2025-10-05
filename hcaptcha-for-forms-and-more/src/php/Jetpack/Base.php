@@ -7,7 +7,9 @@
 
 namespace HCaptcha\Jetpack;
 
+use HCaptcha\Helpers\API;
 use HCaptcha\Helpers\HCaptcha;
+use HCaptcha\Helpers\Utils;
 use WP_Error;
 
 /**
@@ -24,6 +26,11 @@ abstract class Base {
 	 * Nonce name.
 	 */
 	protected const NAME = 'hcaptcha_jetpack_nonce';
+
+	/**
+	 * Script handle.
+	 */
+	private const HANDLE = 'hcaptcha-jetpack';
 
 	/**
 	 * Admin script handle.
@@ -43,7 +50,7 @@ abstract class Base {
 	protected $error_message;
 
 	/**
-	 * Errored form hash.
+	 * Errored hash of the form.
 	 *
 	 * @var string|null
 	 */
@@ -77,12 +84,15 @@ abstract class Base {
 
 		add_filter( 'the_content', [ $this, 'the_content_filter' ] );
 
+		add_action( 'wp_print_footer_scripts', [ $this, 'enqueue_scripts' ], 9 );
+		add_filter( 'script_loader_tag', [ $this, 'add_type_module' ], 10, 3 );
+
 		if ( ! $this->is_editing_jetpack_form_post() ) {
 			return;
 		}
 
 		add_filter( 'hcap_print_hcaptcha_scripts', [ $this, 'print_hcaptcha_scripts' ], 0 );
-		add_action( 'admin_enqueue_scripts', [ $this, 'admin_enqueue_scripts' ] );
+		add_action( 'wp_print_footer_scripts', [ $this, 'editor_enqueue_scripts' ], 9 );
 	}
 
 	/**
@@ -102,10 +112,7 @@ abstract class Base {
 	 * @return bool|WP_Error|mixed
 	 */
 	public function verify( $is_spam = false ) {
-		$this->error_message = hcaptcha_get_verify_message(
-			static::NAME,
-			static::ACTION
-		);
+		$this->error_message = API::verify_post( static::NAME, static::ACTION );
 
 		if ( null === $this->error_message ) {
 			return $is_spam;
@@ -156,7 +163,7 @@ abstract class Base {
 	}
 
 	/**
-	 * Print hCaptcha script when editing a page with Jetpack form.
+	 * Print hCaptcha script when editing a page with a Jetpack form.
 	 *
 	 * @param bool|mixed $status Current print status.
 	 *
@@ -168,11 +175,52 @@ abstract class Base {
 	}
 
 	/**
-	 * Enqueue script in admin.
+	 * Enqueue script on the frontend.
 	 *
 	 * @return void
 	 */
-	public function admin_enqueue_scripts(): void {
+	public function enqueue_scripts(): void {
+		if ( ! hcaptcha()->form_shown ) {
+			return;
+		}
+
+		$min = hcap_min_suffix();
+
+		wp_enqueue_script(
+			self::HANDLE,
+			constant( 'HCAPTCHA_URL' ) . "/assets/js/hcaptcha-jetpack$min.js",
+			[ 'hcaptcha' ],
+			constant( 'HCAPTCHA_VERSION' ),
+			true
+		);
+	}
+
+	/**
+	 * Add type="module" attribute to script tag.
+	 *
+	 * @param string|mixed $tag    Script tag.
+	 * @param string       $handle Script handle.
+	 * @param string       $src    Script source.
+	 *
+	 * @return string
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function add_type_module( $tag, string $handle, string $src ): string {
+		$tag = (string) $tag;
+
+		if ( self::HANDLE !== $handle ) {
+			return $tag;
+		}
+
+		return HCaptcha::add_type_module( $tag );
+	}
+
+	/**
+	 * Enqueue script in the block editor.
+	 *
+	 * @return void
+	 */
+	public function editor_enqueue_scripts(): void {
 		$min = hcap_min_suffix();
 
 		wp_enqueue_script(
@@ -267,7 +315,7 @@ abstract class Base {
 		$atts['name']   = self::NAME;
 		$atts['auto']   = false;
 
-		$atts = HCaptcha::flatten_array( $atts, '--' );
+		$atts = Utils::flatten_array( $atts, '--' );
 
 		array_walk(
 			$atts,
@@ -353,7 +401,7 @@ abstract class Base {
 	}
 
 	/**
-	 * Check if currently editing post contains a Jetpack form.
+	 * Check if the currently editing post contains a Jetpack form.
 	 *
 	 * @return bool
 	 */

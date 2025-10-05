@@ -4,7 +4,7 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
+class ComposerStaticInit0948d9ad69a9f4852d35c417b9397c22
 {
     public static $prefixLengthsPsr4 = array (
         'K' => 
@@ -36,6 +36,7 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
     public static $classMap = array (
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
         'HCaptcha\\ACFE\\Form' => __DIR__ . '/../..' . '/src/php/ACFE/Form.php',
+        'HCaptcha\\Abstracts\\CommentBase' => __DIR__ . '/../..' . '/src/php/Abstracts/CommentBase.php',
         'HCaptcha\\Abstracts\\LoginBase' => __DIR__ . '/../..' . '/src/php/Abstracts/LoginBase.php',
         'HCaptcha\\Abstracts\\LostPasswordBase' => __DIR__ . '/../..' . '/src/php/Abstracts/LostPasswordBase.php',
         'HCaptcha\\Admin\\Events\\Events' => __DIR__ . '/../..' . '/src/php/Admin/Events/Events.php',
@@ -49,6 +50,9 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
         'HCaptcha\\Admin\\WhatsNew' => __DIR__ . '/../..' . '/src/php/Admin/WhatsNew.php',
         'HCaptcha\\Affiliates\\Login' => __DIR__ . '/../..' . '/src/php/Affiliates/Login.php',
         'HCaptcha\\Affiliates\\Register' => __DIR__ . '/../..' . '/src/php/Affiliates/Register.php',
+        'HCaptcha\\AntiSpam\\AntiSpam' => __DIR__ . '/../..' . '/src/php/AntiSpam/AntiSpam.php',
+        'HCaptcha\\AntiSpam\\Honeypot' => __DIR__ . '/../..' . '/src/php/AntiSpam/Honeypot.php',
+        'HCaptcha\\AntiSpam\\ProviderBase' => __DIR__ . '/../..' . '/src/php/AntiSpam/ProviderBase.php',
         'HCaptcha\\Asgaros\\Base' => __DIR__ . '/../..' . '/src/php/Asgaros/Base.php',
         'HCaptcha\\Asgaros\\Form' => __DIR__ . '/../..' . '/src/php/Asgaros/Form.php',
         'HCaptcha\\AutoVerify\\AutoVerify' => __DIR__ . '/../..' . '/src/php/AutoVerify/AutoVerify.php',
@@ -63,6 +67,9 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
         'HCaptcha\\BeaverBuilder\\Base' => __DIR__ . '/../..' . '/src/php/BeaverBuilder/Base.php',
         'HCaptcha\\BeaverBuilder\\Contact' => __DIR__ . '/../..' . '/src/php/BeaverBuilder/Contact.php',
         'HCaptcha\\BeaverBuilder\\Login' => __DIR__ . '/../..' . '/src/php/BeaverBuilder/Login.php',
+        'HCaptcha\\Blocksy\\NewsletterSubscribe' => __DIR__ . '/../..' . '/src/php/Blocksy/NewsletterSubscribe.php',
+        'HCaptcha\\Blocksy\\ProductReview' => __DIR__ . '/../..' . '/src/php/Blocksy/ProductReview.php',
+        'HCaptcha\\Blocksy\\Waitlist' => __DIR__ . '/../..' . '/src/php/Blocksy/Waitlist.php',
         'HCaptcha\\Brizy\\Base' => __DIR__ . '/../..' . '/src/php/Brizy/Base.php',
         'HCaptcha\\Brizy\\Form' => __DIR__ . '/../..' . '/src/php/Brizy/Form.php',
         'HCaptcha\\BuddyPress\\CreateGroup' => __DIR__ . '/../..' . '/src/php/BuddyPress/CreateGroup.php',
@@ -81,6 +88,9 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
         'HCaptcha\\ColorlibCustomizer\\Login' => __DIR__ . '/../..' . '/src/php/ColorlibCustomizer/Login.php',
         'HCaptcha\\ColorlibCustomizer\\LostPassword' => __DIR__ . '/../..' . '/src/php/ColorlibCustomizer/LostPassword.php',
         'HCaptcha\\ColorlibCustomizer\\Register' => __DIR__ . '/../..' . '/src/php/ColorlibCustomizer/Register.php',
+        'HCaptcha\\CustomerReviews\\Base' => __DIR__ . '/../..' . '/src/php/CustomerReviews/Base.php',
+        'HCaptcha\\CustomerReviews\\QuestionAnswer' => __DIR__ . '/../..' . '/src/php/CustomerReviews/QuestionAnswer.php',
+        'HCaptcha\\CustomerReviews\\Review' => __DIR__ . '/../..' . '/src/php/CustomerReviews/Review.php',
         'HCaptcha\\DelayedScript\\DelayedScript' => __DIR__ . '/../..' . '/src/php/DelayedScript/DelayedScript.php',
         'HCaptcha\\Divi\\Comment' => __DIR__ . '/../..' . '/src/php/Divi/Comment.php',
         'HCaptcha\\Divi\\Contact' => __DIR__ . '/../..' . '/src/php/Divi/Contact.php',
@@ -109,12 +119,16 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
         'HCaptcha\\GravityForms\\Field' => __DIR__ . '/../..' . '/src/php/GravityForms/Field.php',
         'HCaptcha\\GravityForms\\Form' => __DIR__ . '/../..' . '/src/php/GravityForms/Form.php',
         'HCaptcha\\HTMLForms\\Form' => __DIR__ . '/../..' . '/src/php/HTMLForms/Form.php',
+        'HCaptcha\\Helpers\\API' => __DIR__ . '/../..' . '/src/php/Helpers/API.php',
         'HCaptcha\\Helpers\\DB' => __DIR__ . '/../..' . '/src/php/Helpers/DB.php',
+        'HCaptcha\\Helpers\\FormSubmitTime' => __DIR__ . '/../..' . '/src/php/Helpers/FormSubmitTime.php',
         'HCaptcha\\Helpers\\HCaptcha' => __DIR__ . '/../..' . '/src/php/Helpers/HCaptcha.php',
         'HCaptcha\\Helpers\\Minify\\CSS' => __DIR__ . '/../..' . '/src/php/Helpers/Minify/CSS.php',
         'HCaptcha\\Helpers\\Minify\\JS' => __DIR__ . '/../..' . '/src/php/Helpers/Minify/JS.php',
         'HCaptcha\\Helpers\\Pages' => __DIR__ . '/../..' . '/src/php/Helpers/Pages.php',
         'HCaptcha\\Helpers\\Request' => __DIR__ . '/../..' . '/src/php/Helpers/Request.php',
+        'HCaptcha\\Helpers\\Utils' => __DIR__ . '/../..' . '/src/php/Helpers/Utils.php',
+        'HCaptcha\\IcegramExpress\\Form' => __DIR__ . '/../..' . '/src/php/IcegramExpress/Form.php',
         'HCaptcha\\Jetpack\\Base' => __DIR__ . '/../..' . '/src/php/Jetpack/Base.php',
         'HCaptcha\\Jetpack\\Form' => __DIR__ . '/../..' . '/src/php/Jetpack/Form.php',
         'HCaptcha\\Kadence\\AdvancedBlockParser' => __DIR__ . '/../..' . '/src/php/Kadence/AdvancedBlockParser.php',
@@ -179,6 +193,9 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
         'HCaptcha\\UM\\Login' => __DIR__ . '/../..' . '/src/php/UM/Login.php',
         'HCaptcha\\UM\\LostPassword' => __DIR__ . '/../..' . '/src/php/UM/LostPassword.php',
         'HCaptcha\\UM\\Register' => __DIR__ . '/../..' . '/src/php/UM/Register.php',
+        'HCaptcha\\UltimateAddons\\Base' => __DIR__ . '/../..' . '/src/php/UltimateAddons/Base.php',
+        'HCaptcha\\UltimateAddons\\Login' => __DIR__ . '/../..' . '/src/php/UltimateAddons/Login.php',
+        'HCaptcha\\UltimateAddons\\Register' => __DIR__ . '/../..' . '/src/php/UltimateAddons/Register.php',
         'HCaptcha\\UsersWP\\Common' => __DIR__ . '/../..' . '/src/php/UsersWP/Common.php',
         'HCaptcha\\UsersWP\\ForgotPassword' => __DIR__ . '/../..' . '/src/php/UsersWP/ForgotPassword.php',
         'HCaptcha\\UsersWP\\Login' => __DIR__ . '/../..' . '/src/php/UsersWP/Login.php',
@@ -188,11 +205,13 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
         'HCaptcha\\Vendors\\MatthiasMullie\\Minify\\Exceptions\\BasicException' => __DIR__ . '/../..' . '/vendors/matthiasmullie/minify/src/Exceptions/BasicException.php',
         'HCaptcha\\Vendors\\MatthiasMullie\\Minify\\Exceptions\\FileImportException' => __DIR__ . '/../..' . '/vendors/matthiasmullie/minify/src/Exceptions/FileImportException.php',
         'HCaptcha\\Vendors\\MatthiasMullie\\Minify\\Exceptions\\IOException' => __DIR__ . '/../..' . '/vendors/matthiasmullie/minify/src/Exceptions/IOException.php',
+        'HCaptcha\\Vendors\\MatthiasMullie\\Minify\\Exceptions\\PatternMatchException' => __DIR__ . '/../..' . '/vendors/matthiasmullie/minify/src/Exceptions/PatternMatchException.php',
         'HCaptcha\\Vendors\\MatthiasMullie\\Minify\\JS' => __DIR__ . '/../..' . '/vendors/matthiasmullie/minify/src/JS.php',
         'HCaptcha\\Vendors\\MatthiasMullie\\Minify\\Minify' => __DIR__ . '/../..' . '/vendors/matthiasmullie/minify/src/Minify.php',
         'HCaptcha\\Vendors\\MatthiasMullie\\PathConverter\\Converter' => __DIR__ . '/../..' . '/vendors/matthiasmullie/path-converter/src/Converter.php',
         'HCaptcha\\Vendors\\MatthiasMullie\\PathConverter\\ConverterInterface' => __DIR__ . '/../..' . '/vendors/matthiasmullie/path-converter/src/ConverterInterface.php',
         'HCaptcha\\Vendors\\MatthiasMullie\\PathConverter\\NoConverter' => __DIR__ . '/../..' . '/vendors/matthiasmullie/path-converter/src/NoConverter.php',
+        'HCaptcha\\WCGermanized\\ReturnRequest' => __DIR__ . '/../..' . '/src/php/WCGermanized/ReturnRequest.php',
         'HCaptcha\\WCWishlists\\CreateList' => __DIR__ . '/../..' . '/src/php/WCWishlists/CreateList.php',
         'HCaptcha\\WC\\Checkout' => __DIR__ . '/../..' . '/src/php/WC/Checkout.php',
         'HCaptcha\\WC\\Login' => __DIR__ . '/../..' . '/src/php/WC/Login.php',
@@ -222,9 +241,9 @@ class ComposerStaticInitd837a11b4d63ca15201a747f68ece96b
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInitd837a11b4d63ca15201a747f68ece96b::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInitd837a11b4d63ca15201a747f68ece96b::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInitd837a11b4d63ca15201a747f68ece96b::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit0948d9ad69a9f4852d35c417b9397c22::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit0948d9ad69a9f4852d35c417b9397c22::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInit0948d9ad69a9f4852d35c417b9397c22::$classMap;
 
         }, null, ClassLoader::class);
     }

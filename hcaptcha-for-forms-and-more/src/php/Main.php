@@ -17,6 +17,7 @@ use HCaptcha\Admin\Events\Events;
 use HCaptcha\Admin\PluginStats;
 use HCaptcha\Admin\Privacy;
 use HCaptcha\Admin\WhatsNew;
+use HCaptcha\AntiSpam\Honeypot;
 use HCaptcha\AutoVerify\AutoVerify;
 use HCaptcha\CF7\Admin;
 use HCaptcha\CACSP\Compatibility;
@@ -27,6 +28,7 @@ use HCaptcha\Divi\Fix;
 use HCaptcha\DownloadManager\DownloadManager;
 use HCaptcha\ElementorPro\HCaptchaHandler;
 use HCaptcha\EventsManager\Booking;
+use HCaptcha\Helpers\FormSubmitTime;
 use HCaptcha\Helpers\HCaptcha;
 use HCaptcha\Helpers\Pages;
 use HCaptcha\Helpers\Request;
@@ -41,6 +43,7 @@ use HCaptcha\Settings\General;
 use HCaptcha\Settings\Integrations;
 use HCaptcha\Settings\Settings;
 use HCaptcha\Settings\SystemInfo;
+use HCaptcha\WCGermanized\ReturnRequest;
 use HCaptcha\WCWishlists\CreateList;
 
 /**
@@ -86,7 +89,7 @@ class Main {
 
 	/**
 	 * We have the verification result of the hCaptcha widget.
-	 * Use this flag to send remote request only once.
+	 * Use this flag to send a remote request only once.
 	 *
 	 * @var boolean
 	 */
@@ -107,7 +110,7 @@ class Main {
 	protected $loaded_classes = [];
 
 	/**
-	 * Migrations class instance.
+	 * Migrations' class instance.
 	 *
 	 * @var Migrations
 	 */
@@ -118,7 +121,7 @@ class Main {
 	 *
 	 * @var Settings
 	 */
-	private $settings;
+	protected $settings;
 
 	/**
 	 * Instance of AutoVerify.
@@ -156,6 +159,8 @@ class Main {
 		$this->migrations = new Migrations();
 
 		( new Fix() )->init();
+
+		$this->load( FormSubmitTime::class );
 
 		add_action( 'plugins_loaded', [ $this, 'init_hooks' ], self::LOAD_PRIORITY );
 	}
@@ -202,6 +207,7 @@ class Main {
 		$this->load( WhatsNew::class );
 
 		add_action( 'plugins_loaded', [ $this, 'load_modules' ], self::LOAD_PRIORITY + 1 );
+		add_filter( 'hcap_blacklist_ip', [ $this, 'denylist_ip' ], -PHP_INT_MAX, 2 );
 		add_filter( 'hcap_whitelist_ip', [ $this, 'allowlist_ip' ], -PHP_INT_MAX, 2 );
 		add_action( 'before_woocommerce_init', [ $this, 'declare_wc_compatibility' ] );
 
@@ -217,6 +223,7 @@ class Main {
 		add_action( 'login_head', [ $this, 'print_inline_styles' ] );
 		add_action( 'login_head', [ $this, 'login_head' ] );
 		add_action( 'wp_print_footer_scripts', [ $this, 'print_footer_scripts' ], 0 );
+		add_action( 'hcap_protect_form', [ $this, 'allow_honeypot_and_fst' ], 10, 3 );
 
 		$this->auto_verify = new AutoVerify();
 		$this->auto_verify->init();
@@ -226,7 +233,7 @@ class Main {
 	}
 
 	/**
-	 * Get plugin class instance.
+	 * Get a plugin class instance.
 	 *
 	 * @param string $class_name Class name.
 	 *
@@ -275,10 +282,10 @@ class Main {
 			/**
 			 * Filters the user IP to check whether it is allowlisted.
 			 *
-			 * @param bool         $allowlisted IP is allowlisted.
-			 * @param string|false $ip          IP string or false for local addresses.
+			 * @param bool   $allowlisted IP is allowlisted.
+			 * @param string $ip          IP string.
 			 */
-			apply_filters( 'hcap_whitelist_ip', false, hcap_get_user_ip() ) ||
+			apply_filters( 'hcap_whitelist_ip', false, hcap_get_user_ip( false ) ) ||
 			( '' === $settings->get_site_key() || '' === $settings->get_secret_key() )
 		);
 
@@ -474,6 +481,7 @@ class Main {
 		$div_logo_url       = HCAPTCHA_URL . '/assets/images/hcaptcha-div-logo.svg';
 		$div_logo_white_url = HCAPTCHA_URL . '/assets/images/hcaptcha-div-logo-white.svg';
 		$bg                 = $settings->get_custom_theme_background() ?: 'initial';
+		$load_fail_msg      = __( 'If you see this message, hCaptcha failed to load due to site errors.', 'hcaptcha-for-forms-and-more' );
 
 		/* language=CSS */
 		$css = '
@@ -499,8 +507,12 @@ class Main {
 		display: none;
 	}
 
+	.h-captcha iframe {
+		z-index: 1;
+	}
+
 	.h-captcha::before {
-		content: \'\';
+		content: "";
 		display: block;
 		position: absolute;
 		top: 0;
@@ -508,6 +520,33 @@ class Main {
 		background: url( ' . $div_logo_url . ' ) no-repeat;
 		border: 1px solid transparent;
 		border-radius: 4px;
+		box-sizing: border-box;
+	}
+
+	.h-captcha::after {
+		content: "' . $load_fail_msg . '";
+	    font: 13px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+		display: block;
+		position: absolute;
+		top: 0;
+		left: 0;
+		box-sizing: border-box;
+        color: #ff0000;
+		opacity: 0;
+	}
+
+	.h-captcha:not(:has(iframe))::after {
+		animation: hcap-msg-fade-in .3s ease forwards;
+		animation-delay: 2s;
+	}
+	
+	.h-captcha:has(iframe)::after {
+		animation: none;
+		opacity: 0;
+	}
+	
+	@keyframes hcap-msg-fade-in {
+		to { opacity: 1; }
 	}
 
 	.h-captcha[data-size="normal"]::before {
@@ -516,10 +555,18 @@ class Main {
 		background-position: 94% 28%;
 	}
 
+	.h-captcha[data-size="normal"]::after {
+		padding: 19px 75px 16px 10px;
+	}
+
 	.h-captcha[data-size="compact"]::before {
 		width: 156px;
 		height: 136px;
 		background-position: 50% 79%;
+	}
+
+	.h-captcha[data-size="compact"]::after {
+		padding: 10px 10px 16px 10px;
 	}
 
 	.h-captcha[data-theme="light"]::before,
@@ -552,7 +599,8 @@ class Main {
 		background-color: ' . $bg . ';
 	}
 
-	.h-captcha[data-size="invisible"]::before {
+	.h-captcha[data-size="invisible"]::before,
+	.h-captcha[data-size="invisible"]::after {
 		display: none;
 	}
 
@@ -569,7 +617,7 @@ class Main {
 	}
 
 	/**
-	 * Print styles to fit hcaptcha widget to the login form.
+	 * Print styles to fit the hcaptcha widget to the login form.
 	 *
 	 * @return void
 	 * @noinspection CssUnusedSymbol
@@ -645,7 +693,7 @@ class Main {
 	}
 
 	/**
-	 * Get API source url with params.
+	 * Get the API source url with params.
 	 *
 	 * @return string
 	 */
@@ -796,6 +844,73 @@ class Main {
 	}
 
 	/**
+	 * Allow honeypot and FST on the supported forms only.
+	 * At this moment, only some forms can use honeypot and fst anti-spam token protection.
+	 * The supported list will be extended in the future.
+	 *
+	 * @param bool|mixed $value   The protection status of a form.
+	 * @param string[]   $source  The source of the form (plugin, theme, WordPress Core).
+	 * @param int|string $form_id Form id.
+	 *
+	 * @return bool
+	 * @noinspection PhpUnusedParameterInspection
+	 */
+	public function allow_honeypot_and_fst( $value, array $source, $form_id ): bool {
+		$value = (bool) $value;
+
+		/**
+		 * Supported forms.
+		 *
+		 * @var ?array $supported_forms
+		 */
+		static $supported_forms = null;
+
+		if ( null === $supported_forms ) {
+			$supported_forms = [];
+
+			// Use honeypot protection info only, as FST is always added for honeypot forms.
+			$honeypot_protected_forms = Honeypot::get_protected_forms()['honeypot'];
+			$honeypot_statuses        = [];
+
+			foreach ( $honeypot_protected_forms as $status => $forms ) {
+				foreach ( $forms as $form ) {
+					$honeypot_statuses[] = [ $status, $form ];
+				}
+
+				$honeypot_statuses[] = [ $status, null ];
+			}
+
+			foreach ( $this->modules as $module ) {
+				[ $module_status, $module_source ] = $module;
+
+				if ( ! in_array( $module_status, $honeypot_statuses, true ) ) {
+					continue;
+				}
+
+				$module_source = (array) $module_source;
+				$module_source = [ '' ] === $module_source ? [ 'WordPress' ] : $module_source;
+
+				$supported_forms[] = $module_source;
+			}
+
+			$supported_forms = array_merge(
+				array_unique( $supported_forms, SORT_REGULAR ),
+				[
+					[ General::class ], // General settings page.
+					[ hcaptcha()->settings()->get_plugin_name() ], // Protect Content.
+				]
+			);
+		}
+
+		if ( $source && ! in_array( $source, $supported_forms, true ) ) {
+			hcaptcha()->settings()->set( 'honeypot', [ '' ] );
+			hcaptcha()->settings()->set( 'set_min_submit_time', [ '' ] );
+		}
+
+		return $value;
+	}
+
+	/**
 	 * Declare compatibility with WC features.
 	 *
 	 * @return void
@@ -806,6 +921,30 @@ class Main {
 			FeaturesUtil::declare_compatibility( 'custom_order_tables', constant( 'HCAPTCHA_FILE' ) );
 		}
 		// @codeCoverageIgnoreEnd
+	}
+
+	/**
+	 * Filter the user IP to check if it is denylisted.
+	 * For denylisted IPs, any form submission fails.
+	 *
+	 * @param bool|mixed   $denylisted Whether IP is denylisted.
+	 * @param string|false $client_ip   Client IP.
+	 *
+	 * @return bool|mixed
+	 */
+	public function denylist_ip( $denylisted, $client_ip ) {
+		$ips = explode(
+			"\n",
+			$this->settings()->get( 'blacklisted_ips' )
+		);
+
+		foreach ( $ips as $ip ) {
+			if ( Request::is_ip_in_range( $client_ip, $ip ) ) {
+				return true;
+			}
+		}
+
+		return $denylisted;
 	}
 
 	/**
@@ -823,33 +962,10 @@ class Main {
 			$this->settings()->get( 'whitelisted_ips' )
 		);
 
-		// Remove invalid IPs.
-		$ips = array_filter(
-			array_map(
-				static function ( $ip ) {
-					return filter_var(
-						trim( $ip ),
-						FILTER_VALIDATE_IP
-					);
-				},
-				$ips
-			)
-		);
-
-		// Convert local IPs to false.
-		$ips = array_map(
-			static function ( $ip ) {
-				return filter_var(
-					trim( $ip ),
-					FILTER_VALIDATE_IP,
-					FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
-				);
-			},
-			$ips
-		);
-
-		if ( in_array( $client_ip, $ips, true ) ) {
-			return true;
+		foreach ( $ips as $ip ) {
+			if ( Request::is_ip_in_range( $client_ip, $ip ) ) {
+				return true;
+			}
 		}
 
 		return $allowlisted;
@@ -965,6 +1081,21 @@ class Main {
 				'bb-plugin/fl-builder.php',
 				BeaverBuilder\Login::class,
 			],
+			'Blocksy Newsletter Subscribe'         => [
+				[ 'blocksy_status', 'newsletter_subscribe' ],
+				'blocksy',
+				Blocksy\NewsletterSubscribe::class,
+			],
+			'Blocksy Product Review'               => [
+				[ 'blocksy_status', 'product_review' ],
+				'blocksy',
+				Blocksy\ProductReview::class,
+			],
+			'Blocksy Wait List'                    => [
+				[ 'blocksy_status', 'waitlist' ],
+				'blocksy',
+				Blocksy\Waitlist::class,
+			],
 			'Brizy Form'                           => [
 				[ 'brizy_status', 'form' ],
 				'brizy/brizy.php',
@@ -1029,6 +1160,16 @@ class Main {
 				[ 'cacsp_status', null ],
 				'cookies-and-content-security-policy/cookies-and-content-security-policy.php',
 				[ Compatibility::class ],
+			],
+			'Customer Reviews for WC Question'     => [
+				[ 'customer_reviews_status', 'q&a' ],
+				'customer-reviews-woocommerce/ivole.php',
+				[ CustomerReviews\QuestionAnswer::class ],
+			],
+			'Customer Reviews for WC Review'       => [
+				[ 'customer_reviews_status', 'review' ],
+				'customer-reviews-woocommerce/ivole.php',
+				[ CustomerReviews\Review::class ],
 			],
 			'Divi Comment Form'                    => [
 				[ 'divi_status', 'comment' ],
@@ -1147,7 +1288,7 @@ class Main {
 			],
 			'Fluent Forms'                         => [
 				[ 'fluent_status', 'form' ],
-				'fluentform/fluentform.php',
+				[ 'fluentformpro/fluentformpro.php', 'fluentform/fluentform.php' ],
 				FluentForm\Form::class,
 			],
 			'Formidable Forms'                     => [
@@ -1174,6 +1315,11 @@ class Main {
 				[ 'html_forms_status', 'form' ],
 				'html-forms/html-forms.php',
 				HTMLForms\Form::class,
+			],
+			'Icegram Express'                      => [
+				[ 'icegram_express_status', 'form' ],
+				'email-subscribers/email-subscribers.php',
+				IcegramExpress\Form::class,
 			],
 			'Jetpack'                              => [
 				[ 'jetpack_status', 'contact' ],
@@ -1385,6 +1531,16 @@ class Main {
 				'tutor/tutor.php',
 				Tutor\Register::class,
 			],
+			'Ultimate Addons Login'                => [
+				[ 'ultimate_addons_status', 'login' ],
+				'ultimate-elementor/ultimate-elementor.php',
+				UltimateAddons\Login::class,
+			],
+			'Ultimate Addons Register'             => [
+				[ 'ultimate_addons_status', 'register' ],
+				'ultimate-elementor/ultimate-elementor.php',
+				UltimateAddons\Register::class,
+			],
 			'Ultimate Member Login'                => [
 				[ 'ultimate_member_status', 'login' ],
 				'ultimate-member/ultimate-member.php',
@@ -1439,6 +1595,11 @@ class Main {
 				[ 'woocommerce_status', 'register' ],
 				'woocommerce/woocommerce.php',
 				WC\Register::class,
+			],
+			'WooCommerce Germanized'               => [
+				[ 'woocommerce_germanized_status', 'return_request' ],
+				'woocommerce-germanized/woocommerce-germanized.php',
+				ReturnRequest::class,
 			],
 			'WooCommerce Wishlists'                => [
 				[ 'woocommerce_wishlists_status', 'create_list' ],
@@ -1498,7 +1659,7 @@ class Main {
 				continue;
 			}
 
-			// If plugin/theme is active, load a class having the option_value specified or null.
+			// If the plugin or theme is active, load a class having the option_value specified or null.
 			if ( $option_value && ! in_array( $option_value, $option, true ) ) {
 				continue;
 			}
@@ -1550,8 +1711,8 @@ class Main {
 	}
 
 	/**
-	 * Is plugin active.
-	 * When network is widely activated, check if the plugin is network active.
+	 * Check if the plugin is active.
+	 * When the network is widely activated, check if the plugin is network active.
 	 *
 	 * @param string $plugin_name Plugin name.
 	 *

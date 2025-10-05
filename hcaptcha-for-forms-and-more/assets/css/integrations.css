@@ -1,3 +1,16 @@
+.form-table:first-of-type tr {
+	background: none;
+	padding: 10px 0;
+}
+
+.form-table:first-of-type tr th {
+	display: none;
+}
+
+#hcaptcha-options p {
+	margin: 0.5em 0;
+}
+
 .hcaptcha-integrations table tbody {
 	display: grid;
 	grid-template-columns: repeat(4, minmax(100px, 1fr));
@@ -44,7 +57,7 @@
 	background-repeat: no-repeat;
 	background-position: center;
 	background-size: auto 80%;
-	background-image: url( '../images/spinner-white.svg' );
+	background-image: url('../images/spinner-white.svg');
 }
 
 .hcaptcha-integrations table tr.install:after,
@@ -59,15 +72,15 @@
 }
 
 .hcaptcha-integrations table tr.install:after {
-	background-image: url( '../images/spinner-gold.svg' );
+	background-image: url('../images/spinner-gold.svg');
 }
 
 .hcaptcha-integrations table tr.on:after {
-	background-image: url( '../images/spinner-green.svg' );
+	background-image: url('../images/spinner-green.svg');
 }
 
 .hcaptcha-integrations table tr.off:after {
-	background-image: url( '../images/spinner-red.svg' );
+	background-image: url('../images/spinner-red.svg');
 }
 
 .hcaptcha-integrations table tr th {
@@ -137,8 +150,89 @@
 }
 
 .hcaptcha-integrations table tr td {
+	display: flex;
 	padding: 0;
 	margin: 0;
+}
+
+.hcaptcha-integrations table tr td fieldset {
+	width: 100%;
+}
+
+.hcaptcha-integrations table tr td fieldset label {
+	width: 100%;
+}
+
+#hcaptcha-options label + .helper {
+	position: absolute;
+	display: none;
+	flex-direction: row-reverse;
+	right: 0;
+	margin-top: 6px;
+	width: calc(100% - 40px);
+	height: 1.25rem;
+	box-sizing: border-box;
+}
+
+#hcaptcha-options label + .helper:hover {
+	cursor: initial;
+}
+
+#hcaptcha-options label + .helper i {
+	cursor: help;
+}
+
+#hcaptcha-options label + .helper:before {
+	display: none;
+}
+
+/* Display antispam icons inserted by JS as <i> elements. */
+#hcaptcha-options label + .helper i[class^="antispam"] {
+	display: inline-block;
+	width: 18px;
+	height: 20px;
+	background-size: cover;
+	background-repeat: no-repeat;
+	background-position: center center;
+	vertical-align: middle;
+}
+
+#hcaptcha-options fieldset:disabled label + .helper i[class^="antispam"] {
+	opacity: 0.7;
+}
+
+#hcaptcha-options label + .helper i.antispam-hcaptcha {
+	background-image: url('../images/antispam-green.svg');
+}
+
+#hcaptcha-options label + .helper i.antispam-native {
+	background-image: url('../images/antispam-yellow.svg');
+}
+
+#hcaptcha-options label + .helper i.antispam-honeypot {
+	background-image: url('../images/antispam-honeypot.svg');
+}
+
+#hcaptcha-options label + .helper i.antispam-fst {
+	background-image: url('../images/antispam-fst.svg');
+	width: 24px;
+	transform: translateY(1px);
+}
+
+#hcaptcha-options fieldset .helper .helper-content {
+	transform: translate(0px, 37px);
+	width: calc(100% + 40px);
+	/* Transition */
+	display: block;
+	visibility: hidden;
+	opacity: 0;
+}
+
+#hcaptcha-options fieldset .helper:hover .helper-content {
+	/* Transition */
+	visibility: visible;
+	opacity: 1;
+	transition: opacity .2s ease .3s, visibility 0s linear .3s;
 }
 
 .hcaptcha-disabled-section {
@@ -155,7 +249,7 @@
 
 #hcaptcha-integrations-search-wrap:before {
 	content: '';
-	background: url( '../images/magnifying-glass.svg' );
+	background: url('../images/magnifying-glass.svg');
 	background-size: contain;
 	width: 16px;
 	height: 16px;

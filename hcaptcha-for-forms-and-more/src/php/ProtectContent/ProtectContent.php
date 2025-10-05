@@ -7,6 +7,7 @@
 
 namespace HCaptcha\ProtectContent;
 
+use HCaptcha\Helpers\API;
 use HCaptcha\Helpers\HCaptcha;
 use HCaptcha\Helpers\Request;
 
@@ -67,7 +68,7 @@ class ProtectContent {
 			return;
 		}
 
-		$this->request_uri = Request::filter_input( INPUT_SERVER, 'REQUEST_URI' );
+		$this->request_uri = $this->normalize_url( Request::filter_input( INPUT_SERVER, 'REQUEST_URI' ) );
 
 		$protected_urls = explode( "\n", $settings->get( 'protected_urls' ) );
 		$protected_urls = array_filter( array_map( 'trim', $protected_urls ) );
@@ -78,6 +79,7 @@ class ProtectContent {
 		foreach ( $protected_urls as $url ) {
 			if ( preg_match( '!' . preg_quote( $url, '!' ) . '!i', $this->request_uri ) ) {
 				$found = true;
+
 				break;
 			}
 		}
@@ -121,7 +123,10 @@ class ProtectContent {
 	 * @return string
 	 */
 	protected function verify(): string {
-		$error_message = hcaptcha_verify_post( self::NONCE, self::ACTION );
+		// It is always too fast with Pro.
+		hcaptcha()->settings()->set( 'set_min_submit_time', [ '' ] );
+
+		$error_message = API::verify_post( self::NONCE, self::ACTION );
 
 		if ( null === $error_message ) {
 			$time   = time();
@@ -435,7 +440,7 @@ class ProtectContent {
 					'theme'  => 'auto',
 					'size'   => 'normal',
 					'id'     => [
-						'source'  => hcaptcha()->settings()->get_plugin_name(),
+						'source'  => [ hcaptcha()->settings()->get_plugin_name() ],
 						'form_id' => 'protect',
 					],
 				];
@@ -541,5 +546,39 @@ class ProtectContent {
 		// @codeCoverageIgnoreStart
 		exit();
 		// @codeCoverageIgnoreEnd
+	}
+
+	/**
+	 * Normalize URL.
+	 *
+	 * @param string $url URL.
+	 *
+	 * @return string
+	 */
+	private function normalize_url( string $url ): string {
+		$scheme = is_ssl() ? 'https' : 'http';
+		$host   = wp_parse_url( home_url(), PHP_URL_HOST );
+
+		$parts = wp_parse_url( $url );
+		$parts = wp_parse_args(
+			$parts,
+			[
+				'scheme'   => $scheme,
+				'host'     => $host,
+				'path'     => '',
+				'query'    => '',
+				'fragment' => '',
+			]
+		);
+
+		// Rebuild the URL.
+		$url = $parts['scheme'] ? $parts['scheme'] . '://' : '';
+
+		$url .= $parts['host'];
+		$url .= $parts['path'] ?: '';
+		$url .= $parts['query'] ? '?' . $parts['query'] : '';
+		$url .= $parts['fragment'] ? '#' . $parts['fragment'] : '';
+
+		return $url;
 	}
 }

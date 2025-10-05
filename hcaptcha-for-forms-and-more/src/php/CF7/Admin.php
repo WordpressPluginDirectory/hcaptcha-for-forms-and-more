@@ -22,6 +22,11 @@ use WPCF7_TagGeneratorGenerator;
  */
 class Admin extends Base {
 	/**
+	 * Script handle.
+	 */
+	public const HANDLE = 'hcaptcha-cf7';
+
+	/**
 	 * Admin script handle.
 	 */
 	public const ADMIN_HANDLE = 'admin-cf7';
@@ -104,30 +109,37 @@ class Admin extends Base {
 	}
 
 	/**
-	 * Insert live form into CF7 editor.
+	 * Insert live form into the CF7 editor.
 	 *
 	 * @param string $output CF7 editor output.
 	 *
 	 * @return string
 	 */
 	private function insert_live_form( string $output ): string {
-		if ( ! preg_match( '/(<form .+)<div id="poststuff">/s', $output, $m ) ) {
-			return $output;
-		}
-
-		$form_start = $m[1];
-
-		if ( ! preg_match( '~(</div><!-- #poststuff -->).*?</form>~s', $output, $m ) ) {
-			return $output;
-		}
-
-		[ $form_end, $stuff_end ] = $m;
-
 		if ( ! preg_match( '/<input type="text" id="wpcf7-shortcode" .+ value="(.+)"/', $output, $m ) ) {
 			return $output;
 		}
 
 		$form_shortcode = htmlspecialchars_decode( $m[1] );
+
+		if ( ! preg_match( '~(<form method="post".+?)<div id="poststuff">.+?(</form>)~s', $output, $m ) ) {
+			return $output;
+		}
+
+		[ $form, $form_start, $form_end ] = $m;
+
+		if ( ! preg_match( '~<div id="post-body".+?>~s', $output, $m ) ) {
+			return $output;
+		}
+
+		$post_body_start = $m[0];
+
+		if ( ! preg_match( '~(</div>(?:<!-- #post-body -->)*\s*<br class="clear" />\s*</div>.*?)</form>~s', $output, $m ) ) {
+			return $output;
+		}
+
+		$post_body_end = $m[1];
+
 		$live_form      = do_shortcode( $form_shortcode );
 		$stripe_message = '';
 
@@ -149,17 +161,18 @@ class Admin extends Base {
 			'</div>' .
 			"\n";
 
-		// Remove form tag.
-		$output = str_replace( [ $form_start, $form_end ], [ '', $stuff_end ], $output );
+		$post_body_end_with_live = str_replace( '<br class="clear" />', $live_container . '<br class="clear" />', $post_body_end );
 
-		// Insert form start at the beginning of the id="post-body".
-		$search = '<div id="post-body-content">';
-		$output = str_replace( $search, $form_start . $search, $output );
+		// Extract form content.
+		$form_content = str_replace( [ $form_start, $form_end ], '', $form );
 
-		// Insert form end and live container at the end of the id="post-body".
-		$search = '/(<\/div>\s*<!-- #post-body -->)/';
-
-		return preg_replace( $search, '</form>$1' . $live_container, $output );
+		// Leave form content only.
+		// Add form inside div#post-body.
+		return str_replace(
+			[ $form, $post_body_start, $post_body_end ],
+			[ $form_content, $post_body_start . $form_start, $form_end . $post_body_end_with_live ],
+			$output
+		);
 	}
 
 	/**
@@ -262,7 +275,7 @@ class Admin extends Base {
 			[ 'in_footer' => true ]
 		);
 
-		// The hCaptcha plugin styles.
+		// The hCaptcha admin script and style.
 		$min = hcap_min_suffix();
 
 		wp_enqueue_script(
@@ -288,6 +301,15 @@ class Admin extends Base {
 			HCAPTCHA_URL . "/assets/css/admin-cf7$min.css",
 			[],
 			HCAPTCHA_VERSION
+		);
+
+		// The hCaptcha frontend script.
+		wp_enqueue_script(
+			self::HANDLE,
+			HCAPTCHA_URL . "/assets/js/hcaptcha-cf7$min.js",
+			[],
+			HCAPTCHA_VERSION,
+			true
 		);
 	}
 

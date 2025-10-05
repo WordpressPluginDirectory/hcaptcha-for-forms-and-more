@@ -8,7 +8,10 @@
 namespace HCaptcha\Settings;
 
 use HCaptcha\Admin\Notifications;
+use HCaptcha\AntiSpam\AntiSpam;
+use HCaptcha\Helpers\API;
 use HCaptcha\Helpers\HCaptcha;
+use HCaptcha\Helpers\Request;
 use HCaptcha\Main;
 use KAGG\Settings\Abstracts\SettingsBase;
 
@@ -45,6 +48,11 @@ class General extends PluginSettingsBase {
 	public const TOGGLE_SECTION_ACTION = 'hcaptcha-general-toggle-section';
 
 	/**
+	 * Check IPs ajax action.
+	 */
+	public const CHECK_IPS_ACTION = 'hcaptcha-general-check-ips';
+
+	/**
 	 * Keys section id.
 	 */
 	public const SECTION_KEYS = 'keys';
@@ -68,6 +76,11 @@ class General extends PluginSettingsBase {
 	 * Content section id.
 	 */
 	public const SECTION_CONTENT = 'content';
+
+	/**
+	 * AntiSpam section id.
+	 */
+	public const SECTION_ANTISPAM = 'antispam';
 
 	/**
 	 * Other section id.
@@ -163,8 +176,8 @@ class General extends PluginSettingsBase {
 			// We need ajax actions in the Notifications class.
 			$this->init_notifications();
 		} else {
-			// Current class loaded early on plugins_loaded.
-			// Init Notifications later, when Settings class is ready.
+			// The current class loaded early on plugins_loaded.
+			// Init Notifications later, when the Settings class is ready.
 			// Also, we need to check if we are on the General screen.
 			add_action( 'current_screen', [ $this, 'init_notifications' ] );
 		}
@@ -174,6 +187,7 @@ class General extends PluginSettingsBase {
 
 		add_filter( 'kagg_settings_fields', [ $this, 'settings_fields' ] );
 		add_action( 'wp_ajax_' . self::CHECK_CONFIG_ACTION, [ $this, 'check_config' ] );
+		add_action( 'wp_ajax_' . self::CHECK_IPS_ACTION, [ $this, 'check_ips' ] );
 		add_action( 'wp_ajax_' . self::TOGGLE_SECTION_ACTION, [ $this, 'toggle_section' ] );
 
 		add_filter( 'pre_update_option_' . $this->option_name(), [ $this, 'maybe_send_stats' ], 20, 2 );
@@ -520,8 +534,60 @@ class General extends PluginSettingsBase {
 				'section' => self::SECTION_CONTENT,
 				'helper'  => __( 'Protect content of listed URLs. Please specify one URL per line. You may use regular expressions.', 'hcaptcha-for-forms-and-more' ),
 			],
+			'set_min_submit_time'  => [
+				'label'   => __( 'Token and Honeypot', 'hcaptcha-for-forms-and-more' ),
+				'type'    => 'checkbox',
+				'section' => self::SECTION_ANTISPAM,
+				'options' => [
+					'on' => __( 'Set Minimum Time', 'hcaptcha-for-forms-and-more' ),
+				],
+				'helper'  => __( 'Set a minimum amount of time a user must spend on a form before submitting.', 'hcaptcha-for-forms-and-more' ),
+			],
+			'min_submit_time'      => [
+				'label'   => __( 'Minimum Time to Submit the Form, sec', 'hcaptcha-for-forms-and-more' ),
+				'type'    => 'number',
+				'section' => self::SECTION_ANTISPAM,
+				'default' => 2,
+				'min'     => 1,
+				'helper'  => __( 'Set a minimum amount of time a user must spend on a form before submitting.', 'hcaptcha-for-forms-and-more' ),
+			],
+			'honeypot'             => [
+				'type'    => 'checkbox',
+				'section' => self::SECTION_ANTISPAM,
+				'options' => [
+					'on' => __( 'Enable Honeypot Field', 'hcaptcha-for-forms-and-more' ),
+				],
+				'helper'  => __( 'Add a honeypot field to submitted forms for early bot prevention.', 'hcaptcha-for-forms-and-more' ),
+			],
+			'antispam'             => [
+				'label'   => __( 'Anti-Spam Check', 'hcaptcha-for-forms-and-more' ),
+				'type'    => 'checkbox',
+				'section' => self::SECTION_ANTISPAM,
+				'options' => [
+					'on' => __( 'Enable Anti-Spam Check', 'hcaptcha-for-forms-and-more' ),
+				],
+				'helper'  => __( 'Enable anti-spam check of submitted forms.', 'hcaptcha-for-forms-and-more' ),
+			],
+			'antispam_provider'    => [
+				'label'   => __( 'Anti-Spam Provider', 'hcaptcha-for-forms-and-more' ),
+				'type'    => 'select',
+				'section' => self::SECTION_ANTISPAM,
+				'options' => AntiSpam::get_supported_providers(),
+				'helper'  => __( 'Select anti-spam provider.', 'hcaptcha-for-forms-and-more' ),
+			],
+			'blacklisted_ips'      => [
+				'label'   => __( 'Denylisted IPs', 'hcaptcha-for-forms-and-more' ),
+				'type'    => 'textarea',
+				'section' => self::SECTION_OTHER,
+				'helper'  => __( 'Block form sending from listed IP addresses. Please specify one IP, range, or CIDR per line.', 'hcaptcha-for-forms-and-more' ),
+			],
+			'whitelisted_ips'      => [
+				'label'   => __( 'Allowlisted IPs', 'hcaptcha-for-forms-and-more' ),
+				'type'    => 'textarea',
+				'section' => self::SECTION_OTHER,
+				'helper'  => __( 'Do not show hCaptcha for listed IP addresses. Please specify one IP, range, or CIDR per line.', 'hcaptcha-for-forms-and-more' ),
+			],
 			'off_when_logged_in'   => [
-				'label'   => __( 'Other Settings', 'hcaptcha-for-forms-and-more' ),
 				'type'    => 'checkbox',
 				'section' => self::SECTION_OTHER,
 				'options' => [
@@ -551,7 +617,6 @@ class General extends PluginSettingsBase {
 				'options' => [
 					'on' => __( 'Remove Data on Uninstall', 'hcaptcha-for-forms-and-more' ),
 				],
-				'default' => '',
 				'helper'  => __( 'When enabled, all plugin data will be removed when uninstalling the plugin.', 'hcaptcha-for-forms-and-more' ),
 			],
 			self::NETWORK_WIDE     => [
@@ -562,14 +627,8 @@ class General extends PluginSettingsBase {
 				],
 				'helper'  => __( 'On multisite, use same settings for all sites of the network.', 'hcaptcha-for-forms-and-more' ),
 			],
-			'whitelisted_ips'      => [
-				'label'   => __( 'Allowlisted IPs', 'hcaptcha-for-forms-and-more' ),
-				'type'    => 'textarea',
-				'section' => self::SECTION_OTHER,
-				'helper'  => __( 'Do not show hCaptcha for listed IP addresses. Please specify one IP address per line.', 'hcaptcha-for-forms-and-more' ),
-			],
 			'login_limit'          => [
-				'label'   => __( 'Login attempts before hCaptcha', 'hcaptcha-for-forms-and-more' ),
+				'label'   => __( 'Login Attempts Before hCaptcha', 'hcaptcha-for-forms-and-more' ),
 				'type'    => 'number',
 				'section' => self::SECTION_OTHER,
 				'default' => 0,
@@ -577,7 +636,7 @@ class General extends PluginSettingsBase {
 				'helper'  => __( 'Maximum number of failed login attempts before showing hCaptcha.', 'hcaptcha-for-forms-and-more' ),
 			],
 			'login_interval'       => [
-				'label'   => __( 'Failed login attempts interval, min', 'hcaptcha-for-forms-and-more' ),
+				'label'   => __( 'Failed Login Attempts Interval, min', 'hcaptcha-for-forms-and-more' ),
 				'type'    => 'number',
 				'section' => self::SECTION_OTHER,
 				'default' => 15,
@@ -585,7 +644,7 @@ class General extends PluginSettingsBase {
 				'helper'  => __( 'Time interval in minutes when failed login attempts are counted.', 'hcaptcha-for-forms-and-more' ),
 			],
 			'delay'                => [
-				'label'   => __( 'Delay showing hCaptcha, ms', 'hcaptcha-for-forms-and-more' ),
+				'label'   => __( 'Delay Showing hCaptcha, ms', 'hcaptcha-for-forms-and-more' ),
 				'type'    => 'number',
 				'section' => self::SECTION_OTHER,
 				'default' => -100,
@@ -632,6 +691,10 @@ class General extends PluginSettingsBase {
 
 		if ( ! is_multisite() ) {
 			unset( $this->form_fields[ self::NETWORK_WIDE ] );
+		}
+
+		if ( ! AntiSpam::get_supported_providers() ) {
+			unset( $this->form_fields['antispam'], $this->form_fields['antispam_provider'] );
 		}
 	}
 
@@ -706,6 +769,9 @@ class General extends PluginSettingsBase {
 				break;
 			case self::SECTION_CONTENT:
 				$this->print_section_header( $arguments['id'], __( 'Content', 'hcaptcha-for-forms-and-more' ) );
+				break;
+			case self::SECTION_ANTISPAM:
+				$this->print_section_header( $arguments['id'], __( 'Anti-spam', 'hcaptcha-for-forms-and-more' ) );
 				break;
 			case self::SECTION_OTHER:
 				$this->print_section_header( $arguments['id'], __( 'Other', 'hcaptcha-for-forms-and-more' ) );
@@ -807,6 +873,9 @@ class General extends PluginSettingsBase {
 			esc_html__( 'Credentials changed.', 'hcaptcha-for-forms-and-more' ) . "\n" .
 			esc_html__( 'Please complete hCaptcha and check the site config.', 'hcaptcha-for-forms-and-more' );
 
+		/* translators: 1: Provider name. */
+		$provider_error = __( '%1$s anti-spam provider is not configured.', 'hcaptcha-for-forms-and-more' );
+
 		wp_localize_script(
 			self::HANDLE,
 			self::OBJECT,
@@ -814,6 +883,8 @@ class General extends PluginSettingsBase {
 				'ajaxUrl'                              => admin_url( 'admin-ajax.php' ),
 				'checkConfigAction'                    => self::CHECK_CONFIG_ACTION,
 				'checkConfigNonce'                     => wp_create_nonce( self::CHECK_CONFIG_ACTION ),
+				'checkIPsAction'                       => self::CHECK_IPS_ACTION,
+				'checkIPsNonce'                        => wp_create_nonce( self::CHECK_IPS_ACTION ),
 				'toggleSectionAction'                  => self::TOGGLE_SECTION_ACTION,
 				'toggleSectionNonce'                   => wp_create_nonce( self::TOGGLE_SECTION_ACTION ),
 				'modeLive'                             => self::MODE_LIVE,
@@ -824,11 +895,14 @@ class General extends PluginSettingsBase {
 				'modeTestPublisherSiteKey'             => self::MODE_TEST_PUBLISHER_SITE_KEY,
 				'modeTestEnterpriseSafeEndUserSiteKey' => self::MODE_TEST_ENTERPRISE_SAFE_END_USER_SITE_KEY,
 				'modeTestEnterpriseBotDetectedSiteKey' => self::MODE_TEST_ENTERPRISE_BOT_DETECTED_SITE_KEY,
+				'badJSONError'                         => __( 'Bad JSON', 'hcaptcha-for-forms-and-more' ),
 				'checkConfigNotice'                    => $check_config_notice,
 				'checkingConfigMsg'                    => __( 'Checking site config...', 'hcaptcha-for-forms-and-more' ),
 				'completeHCaptchaTitle'                => __( 'Please complete the hCaptcha.', 'hcaptcha-for-forms-and-more' ),
 				'completeHCaptchaContent'              => __( 'Before checking the site config, please complete the Active hCaptcha in the current section.', 'hcaptcha-for-forms-and-more' ),
 				'OKBtnText'                            => __( 'OK', 'hcaptcha-for-forms-and-more' ),
+				'configuredAntiSpamProviders'          => AntiSpam::get_configured_providers(),
+				'configuredAntiSpamProviderError'      => $provider_error,
 			]
 		);
 
@@ -893,15 +967,13 @@ class General extends PluginSettingsBase {
 		$this->run_checks( self::CHECK_CONFIG_ACTION );
 
 		// Nonce is checked by check_ajax_referer() in run_checks().
-		// phpcs:disable WordPress.Security.NonceVerification.Missing
-		$ajax_mode       = isset( $_POST['mode'] ) ? sanitize_text_field( wp_unslash( $_POST['mode'] ) ) : '';
-		$ajax_site_key   = isset( $_POST['siteKey'] ) ? sanitize_text_field( wp_unslash( $_POST['siteKey'] ) ) : '';
-		$ajax_secret_key = isset( $_POST['secretKey'] ) ? sanitize_text_field( wp_unslash( $_POST['secretKey'] ) ) : '';
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		$ajax_mode       = Request::filter_input( INPUT_POST, 'mode' );
+		$ajax_site_key   = Request::filter_input( INPUT_POST, 'siteKey' );
+		$ajax_secret_key = Request::filter_input( INPUT_POST, 'secretKey' );
 
 		add_filter(
 			'hcap_mode',
-			static function ( $mode ) use ( $ajax_mode ) {
+			static function () use ( $ajax_mode ) {
 				// @codeCoverageIgnoreStart
 				return $ajax_mode;
 				// @codeCoverageIgnoreEnd
@@ -911,7 +983,7 @@ class General extends PluginSettingsBase {
 		if ( self::MODE_LIVE === $ajax_mode ) {
 			add_filter(
 				'hcap_site_key',
-				static function ( $site_key ) use ( $ajax_site_key ) {
+				static function () use ( $ajax_site_key ) {
 					// @codeCoverageIgnoreStart
 					return $ajax_site_key;
 					// @codeCoverageIgnoreEnd
@@ -919,7 +991,7 @@ class General extends PluginSettingsBase {
 			);
 			add_filter(
 				'hcap_secret_key',
-				static function ( $secret_key ) use ( $ajax_secret_key ) {
+				static function () use ( $ajax_secret_key ) {
 					// @codeCoverageIgnoreStart
 					return $ajax_secret_key;
 					// @codeCoverageIgnoreEnd
@@ -945,7 +1017,10 @@ class General extends PluginSettingsBase {
 			: '';
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
 
-		$result = hcaptcha_request_verify( $hcaptcha_response );
+		add_filter( 'hcap_check_honeypot_field', '__return_true' );
+		add_filter( 'hcap_verify_fst_token', '__return_true' );
+
+		$result = API::verify_request( $hcaptcha_response );
 
 		if ( null !== $result ) {
 			$this->send_check_config_error( $result, true );
@@ -954,6 +1029,37 @@ class General extends PluginSettingsBase {
 		wp_send_json_success(
 			esc_html__( 'Site config is valid. Save your changes.', 'hcaptcha-for-forms-and-more' )
 		);
+	}
+
+	/**
+	 * Ajax action to check IPs.
+	 *
+	 * @return void
+	 */
+	public function check_ips(): void {
+		$this->run_checks( self::CHECK_IPS_ACTION );
+
+		// Nonce is checked by check_ajax_referer() in run_checks().
+		$ips     = Request::filter_input( INPUT_POST, 'ips' );
+		$ips_arr = explode( ' ', $ips );
+
+		foreach ( $ips_arr as $key => $ip ) {
+			$ip = trim( $ip );
+
+			if ( ! $this->is_valid_ip_or_range( $ip ) ) {
+				wp_send_json_error(
+					esc_html__( 'Invalid IP or CIDR range:', 'hcaptcha-for-forms-and-more' ) .
+					' ' . esc_html( $ip )
+				);
+
+				// For testing purposes.
+				return;
+			}
+
+			$ips_arr[ $key ] = $ip;
+		}
+
+		wp_send_json_success();
 	}
 
 	/**
@@ -1060,5 +1166,60 @@ class General extends PluginSettingsBase {
 		}
 
 		return array_merge( [], ...$result );
+	}
+
+	/**
+	 * Validate IP or CIDR range.
+	 *
+	 * @param string $input Input to validate.
+	 *
+	 * @return bool
+	 */
+	private function is_valid_ip_or_range( string $input ): bool {
+		$input = trim( $input );
+
+		// Check for a single IP (IPv4 or IPv6).
+		if ( filter_var( $input, FILTER_VALIDATE_IP ) ) {
+			return true;
+		}
+
+		// Check CIDR-range.
+		if ( strpos( $input, '/' ) !== false ) {
+			[ $ip, $prefix ] = explode( '/', $input, 2 );
+
+			// Check that the prefix is correct.
+			if ( filter_var( $ip, FILTER_VALIDATE_IP ) && filter_var( $prefix, FILTER_VALIDATE_INT ) !== false ) {
+				$prefix = (int) $prefix;
+
+				if (
+					( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) && $prefix >= 0 && $prefix <= 32 ) ||
+					( filter_var( $ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) && $prefix >= 0 && $prefix <= 128 )
+				) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// Check the range of 'IP-IP' type.
+		if ( strpos( $input, '-' ) !== false ) {
+			[ $ip_start, $ip_end ] = explode( '-', $input, 2 );
+
+			$ip_start = trim( $ip_start );
+			$ip_end   = trim( $ip_end );
+
+			if ( filter_var( $ip_start, FILTER_VALIDATE_IP ) && filter_var( $ip_end, FILTER_VALIDATE_IP ) ) {
+				// Make sure that both IPs are of the same type (IPv4/IPv6).
+				if (
+					( filter_var( $ip_start, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) && filter_var( $ip_end, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 ) ) ||
+					( filter_var( $ip_start, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) && filter_var( $ip_end, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6 ) )
+				) {
+					return true;
+				}
+			}
+		}
+
+		return false;
 	}
 }

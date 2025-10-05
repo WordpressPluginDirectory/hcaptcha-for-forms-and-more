@@ -1,18 +1,25 @@
 <?php
 /**
- * Form class file.
+ * 'Form' class file.
  *
  * @package hcaptcha-wp
  */
 
 namespace HCaptcha\Avada;
 
+use HCaptcha\Helpers\API;
 use HCaptcha\Helpers\HCaptcha;
+use HCaptcha\Helpers\Request;
 
 /**
  * Class Form.
  */
 class Form {
+
+	/**
+	 * Script handle.
+	 */
+	private const HANDLE = 'hcaptcha-avada';
 
 	/**
 	 * Form id.
@@ -38,6 +45,7 @@ class Form {
 		add_filter( 'fusion_builder_form_submission_data', [ $this, 'submission_data' ] );
 		add_action( 'fusion_element_form_content', [ $this, 'add_hcaptcha' ], 10, 2 );
 		add_filter( 'fusion_form_demo_mode', [ $this, 'verify' ] );
+		add_action( 'wp_print_footer_scripts', [ $this, 'enqueue_scripts' ], 9 );
 	}
 
 	/**
@@ -117,17 +125,19 @@ class Form {
 	public function verify( $demo_mode ) {
 
 		// Nonce is checked by Avada.
-		// phpcs:disable WordPress.Security.NonceVerification.Missing, WordPress.Security.NonceVerification.Missing
-		$form_data = isset( $_POST['formData'] ) ?
-			filter_var( wp_unslash( $_POST['formData'] ), FILTER_SANITIZE_FULL_SPECIAL_CHARS ) :
-			[];
+		// phpcs:disable WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$form_data = isset( $_POST['formData'] )
+			? wp_parse_args( html_entity_decode( wp_unslash( $_POST['formData'] ) ) )
+			: [];
+		// phpcs:enable WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 
-		$form_data                   = wp_parse_args( str_replace( '&amp;', '&', $form_data ) );
-		$hcaptcha_response           = $form_data['h-captcha-response'] ?? '';
 		$_POST['hcaptcha-widget-id'] = $form_data['hcaptcha-widget-id'] ?? '';
-		// phpcs:disable WordPress.Security.NonceVerification.Missing, WordPress.Security.NonceVerification.Missing
+		$_POST['hcap_fst_token']     = $form_data['hcap_fst_token'] ?? '';
+		$hp_name                     = API::get_hp_name( $form_data );
+		$_POST[ $hp_name ]           = $form_data[ $hp_name ] ?? '';
+		$_POST['hcap_hp_sig']        = $form_data['hcap_hp_sig'] ?? '';
 
-		$result = hcaptcha_request_verify( $hcaptcha_response );
+		$result = API::verify( $this->get_entry( $form_data ) );
 
 		if ( null === $result ) {
 			return $demo_mode;
@@ -141,5 +151,67 @@ class Form {
 				]
 			)
 		);
+	}
+
+	/**
+	 * Enqueue scripts.
+	 *
+	 * @return void
+	 */
+	public function enqueue_scripts(): void {
+		if ( ! hcaptcha()->form_shown ) {
+			return;
+		}
+
+		$min = hcap_min_suffix();
+
+		wp_enqueue_script(
+			self::HANDLE,
+			HCAPTCHA_URL . "/assets/js/hcaptcha-avada$min.js",
+			[ 'jquery', 'hcaptcha' ],
+			HCAPTCHA_VERSION,
+			true
+		);
+	}
+
+	/**
+	 * Get entry.
+	 *
+	 * @param array $form_data Form data.
+	 *
+	 * @return array
+	 */
+	private function get_entry( array $form_data ): array {
+		$form_id = 0;
+
+		foreach ( $form_data as $key => $value ) {
+			if ( 0 === strpos( $key, 'fusion-form-nonce-' ) ) {
+				$form_id = (int) str_replace( 'fusion-form-nonce-', '', $key );
+
+				break;
+			}
+		}
+
+		$form = get_post( $form_id );
+
+		$entry = [
+			'h-captcha-response' => $form_data['h-captcha-response'] ?? '',
+			'form_date_gmt'      => $form->post_modified_gmt ?? null,
+			'data'               => [],
+		];
+
+		$field_types = json_decode( Request::filter_input( INPUT_POST, 'field_types' ), true );
+
+		foreach ( $form_data as $key => $value ) {
+			$type = $field_types[ $key ] ?? '';
+
+			if ( ! in_array( $type, [ 'text', 'email', 'textarea' ], true ) ) {
+				continue;
+			}
+
+			$entry['data'][ $key ] = $value;
+		}
+
+		return $entry;
 	}
 }
